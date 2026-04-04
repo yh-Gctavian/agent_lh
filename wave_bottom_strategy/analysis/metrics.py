@@ -5,7 +5,7 @@ from typing import Dict
 import pandas as pd
 import numpy as np
 
-from utils.logger import get_logger
+from wave_bottom_strategy.utils.logger import get_logger
 
 logger = get_logger('performance_metrics')
 
@@ -16,111 +16,186 @@ class PerformanceMetrics:
     计算胜率、盈亏比、夏普比率等核心指标
     """
     
-    def __init__(self, returns: pd.Series = None):
+    def __init__(self, returns: pd.Series = None, trade_returns: pd.Series = None):
+        """
+        Args:
+            returns: 日收益率序列
+            trade_returns: 每笔交易收益率序�?
+        """
         self.returns = returns
+        self.trade_returns = trade_returns
     
-    def set_returns(self, returns: pd.Series):
-        """设置收益率序列"""
-        self.returns = returns
+    def win_rate(self) -> float:
+        """计算胜率
+        
+        Returns:
+            胜率（盈利交易占比）
+        """
+        if self.trade_returns is None or len(self.trade_returns) == 0:
+            return 0.0
+        
+        winning = self.trade_returns[self.trade_returns > 0]
+        total = len(self.trade_returns[self.trade_returns != 0])
+        
+        if total == 0:
+            return 0.0
+        
+        return len(winning) / total
     
-    def total_return(self) -> float:
-        """总收益率"""
-        if self.returns is None or len(self.returns) == 0:
+    def profit_loss_ratio(self) -> float:
+        """计算盈亏�?
+        
+        Returns:
+            平均盈利 / 平均亏损
+        """
+        if self.trade_returns is None:
             return 0.0
-        return (1 + self.returns.fillna(0)).prod() - 1
-    
-    def annual_return(self) -> float:
-        """年化收益率"""
-        if self.returns is None or len(self.returns) == 0:
-            return 0.0
-        total = self.total_return()
-        days = len(self.returns)
-        if days == 0:
-            return 0.0
-        return (1 + total) ** (252 / days) - 1
-    
-    def volatility(self) -> float:
-        """年化波动率"""
-        if self.returns is None or len(self.returns) == 0:
-            return 0.0
-        return self.returns.std() * np.sqrt(252)
+        
+        winning = self.trade_returns[self.trade_returns > 0]
+        losing = self.trade_returns[self.trade_returns < 0]
+        
+        avg_win = winning.mean() if len(winning) > 0 else 0
+        avg_loss = abs(losing.mean()) if len(losing) > 0 else 0
+        
+        if avg_loss == 0:
+            return float('inf') if avg_win > 0 else 0
+        
+        return avg_win / avg_loss
     
     def sharpe_ratio(self, risk_free_rate: float = 0.03) -> float:
-        """夏普比率"""
+        """计算夏普比率
+        
+        Args:
+            risk_free_rate: 无风险利率（年化�?
+            
+        Returns:
+            夏普比率
+        """
         if self.returns is None or len(self.returns) == 0:
             return 0.0
-        excess = self.returns - risk_free_rate / 252
-        if excess.std() == 0:
+        
+        excess_returns = self.returns - risk_free_rate / 252
+        
+        if excess_returns.std() == 0:
             return 0.0
-        return excess.mean() / excess.std() * np.sqrt(252)
+        
+        return excess_returns.mean() / excess_returns.std() * np.sqrt(252)
     
     def max_drawdown(self) -> float:
-        """最大回撤"""
+        """计算最大回�?
+        
+        Returns:
+            最大回撤比例（负数�?
+        """
         if self.returns is None or len(self.returns) == 0:
             return 0.0
-        cum = (1 + self.returns.fillna(0)).cumprod()
-        peak = cum.expanding(min_periods=1).max()
-        drawdown = (cum - peak) / peak
+        
+        cumulative = (1 + self.returns).cumprod()
+        peak = cumulative.expanding(min_periods=1).max()
+        drawdown = (cumulative - peak) / peak
+        
         return drawdown.min()
     
+    def annual_return(self) -> float:
+        """计算年化收益�?
+        
+        Returns:
+            年化收益�?
+        """
+        if self.returns is None or len(self.returns) == 0:
+            return 0.0
+        
+        total_return = (1 + self.returns).prod() - 1
+        days = len(self.returns)
+        
+        if days == 0:
+            return 0.0
+        
+        return (1 + total_return) ** (252 / days) - 1
+    
+    def volatility(self) -> float:
+        """计算年化波动�?
+        
+        Returns:
+            年化波动�?
+        """
+        if self.returns is None or len(self.returns) == 0:
+            return 0.0
+        
+        return self.returns.std() * np.sqrt(252)
+    
     def calmar_ratio(self) -> float:
-        """卡玛比率"""
+        """计算卡玛比率
+        
+        Returns:
+            年化收益 / 最大回�?
+        """
         max_dd = abs(self.max_drawdown())
         if max_dd == 0:
             return 0.0
+        
         return self.annual_return() / max_dd
     
-    def win_rate(self, trade_returns: pd.Series = None) -> float:
-        """胜率"""
-        if trade_returns is not None:
-            r = trade_returns
-        elif self.returns is not None:
-            r = self.returns
-        else:
+    def sortino_ratio(self, risk_free_rate: float = 0.03) -> float:
+        """计算索提诺比�?
+        
+        Args:
+            risk_free_rate: 无风险利�?
+            
+        Returns:
+            索提诺比�?
+        """
+        if self.returns is None or len(self.returns) == 0:
             return 0.0
         
-        r = r[r != 0]
-        if len(r) == 0:
+        excess_returns = self.returns - risk_free_rate / 252
+        downside_returns = excess_returns[excess_returns < 0]
+        
+        if len(downside_returns) == 0:
+            return float('inf')
+        
+        downside_std = downside_returns.std()
+        
+        if downside_std == 0:
             return 0.0
         
-        wins = len(r[r > 0])
-        return wins / len(r)
-    
-    def profit_loss_ratio(self, trade_returns: pd.Series = None) -> float:
-        """盈亏比"""
-        if trade_returns is not None:
-            r = trade_returns
-        elif self.returns is not None:
-            r = self.returns
-        else:
-            return 0.0
-        
-        wins = r[r > 0]
-        losses = r[r < 0]
-        
-        avg_win = wins.mean() if len(wins) > 0 else 0
-        avg_loss = abs(losses.mean()) if len(losses) > 0 else 0
-        
-        if avg_loss == 0:
-            return float('inf') if avg_win > 0 else 0.0
-        return avg_win / avg_loss
+        return excess_returns.mean() / downside_std * np.sqrt(252)
     
     def get_all_metrics(self) -> Dict:
-        """获取所有指标"""
+        """获取所有指�?
+        
+        Returns:
+            指标字典
+        """
         return {
-            'total_return': self.total_return(),
-            'annual_return': self.annual_return(),
-            'volatility': self.volatility(),
+            'win_rate': self.win_rate(),
+            'profit_loss_ratio': self.profit_loss_ratio(),
             'sharpe_ratio': self.sharpe_ratio(),
             'max_drawdown': self.max_drawdown(),
+            'annual_return': self.annual_return(),
+            'volatility': self.volatility(),
             'calmar_ratio': self.calmar_ratio(),
-            'win_rate': self.win_rate(),
-            'profit_loss_ratio': self.profit_loss_ratio()
+            'sortino_ratio': self.sortino_ratio(),
         }
     
-    @staticmethod
-    def calculate_from_values(values: pd.Series) -> Dict:
-        """从净值序列计算指标"""
-        returns = values.pct_change()
-        metrics = PerformanceMetrics(returns)
-        return metrics.get_all_metrics()
+    def summary(self) -> str:
+        """生成摘要文本
+        
+        Returns:
+            摘要文本
+        """
+        metrics = self.get_all_metrics()
+        
+        lines = [
+            "=== 绩效指标摘要 ===",
+            f"胜率: {metrics['win_rate']:.2%}",
+            f"盈亏�? {metrics['profit_loss_ratio']:.2f}",
+            f"夏普比率: {metrics['sharpe_ratio']:.2f}",
+            f"最大回�? {metrics['max_drawdown']:.2%}",
+            f"年化收益: {metrics['annual_return']:.2%}",
+            f"年化波动: {metrics['volatility']:.2%}",
+            f"卡玛比率: {metrics['calmar_ratio']:.2f}",
+            f"索提诺比�? {metrics['sortino_ratio']:.2f}",
+        ]
+        
+        return "\n".join(lines)

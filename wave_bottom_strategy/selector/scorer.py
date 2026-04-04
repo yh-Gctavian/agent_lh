@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""因子打分器"""
+"""因子打分�?""
 
 from typing import List, Dict
 import pandas as pd
@@ -12,7 +12,7 @@ logger = get_logger('factor_scorer')
 
 
 class FactorScorer:
-    """因子打分器
+    """因子打分�?
     
     计算6因子得分并加权合成总分
     """
@@ -28,10 +28,10 @@ class FactorScorer:
         }
     
     def calculate_scores(self, data: pd.DataFrame) -> pd.DataFrame:
-        """计算所有因子得分
+        """计算所有因子得�?
         
         Args:
-            data: 日K线数据
+            data: 日K线数�?
             
         Returns:
             各因子得分及综合得分
@@ -42,7 +42,7 @@ class FactorScorer:
         total_score = pd.Series(0.0, index=data.index)
         
         for name, factor in self.factors.items():
-            # 计算因子值
+            # 计算因子�?
             factor_data = factor.calculate(data)
             
             # 计算因子得分
@@ -70,7 +70,7 @@ class FactorScorer:
         Args:
             scores_dict: {symbol: scores_df}
             trade_date: 交易日期
-            top_n: 返回前N只
+            top_n: 返回前N�?
             
         Returns:
             排序后的股票列表

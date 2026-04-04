@@ -15,14 +15,14 @@ logger = get_logger('data_cache')
 class DataCache:
     """数据缓存管理
     
-    使用Parquet格式存储数据，支持高效读写
+    使用Parquet格式存储数据，支持高效读�?
     """
     
     def __init__(self, cache_dir: Path = None):
         self.cache_dir = cache_dir or Path('data/cache')
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         
-        # 子目录
+        # 子目�?
         self.daily_dir = self.cache_dir / 'daily'
         self.factor_dir = self.cache_dir / 'factors'
         self.pool_dir = self.cache_dir / 'pools'
@@ -37,12 +37,12 @@ class DataCache:
         start_date: str,
         end_date: str
     ) -> Path:
-        """保存日K线数据
+        """保存日K线数�?
         
         Args:
-            df: 日K线数据
+            df: 日K线数�?
             symbol: 股票代码
-            start_date: 开始日期
+            start_date: 开始日�?
             end_date: 结束日期
             
         Returns:
@@ -52,7 +52,7 @@ class DataCache:
         filepath = self.daily_dir / filename
         
         df.to_parquet(filepath, index=False, engine='pyarrow')
-        logger.info(f"保存日K线缓存: {filepath}")
+        logger.info(f"保存日K线缓�? {filepath}")
         
         return filepath
     
@@ -62,11 +62,11 @@ class DataCache:
         start_date: str,
         end_date: str
     ) -> Optional[pd.DataFrame]:
-        """加载日K线缓存
+        """加载日K线缓�?
         
         Args:
             symbol: 股票代码
-            start_date: 开始日期
+            start_date: 开始日�?
             end_date: 结束日期
             
         Returns:
@@ -77,10 +77,10 @@ class DataCache:
         
         if filepath.exists():
             df = pd.read_parquet(filepath, engine='pyarrow')
-            logger.info(f"加载日K线缓存: {filepath}")
+            logger.info(f"加载日K线缓�? {filepath}")
             return df
         
-        logger.debug(f"缓存不存在: {filepath}")
+        logger.debug(f"缓存不存�? {filepath}")
         return None
     
     def save_factor(
@@ -136,11 +136,11 @@ class DataCache:
         symbols: List[str],
         pool_name: str
     ) -> Path:
-        """保存股票池
+        """保存股票�?
         
         Args:
             symbols: 股票代码列表
-            pool_name: 股票池名称
+            pool_name: 股票池名�?
             
         Returns:
             缓存文件路径
@@ -150,17 +150,17 @@ class DataCache:
         with open(filepath, 'w') as f:
             f.write('\n'.join(symbols))
         
-        logger.info(f"保存股票池缓存: {filepath}")
+        logger.info(f"保存股票池缓�? {filepath}")
         return filepath
     
     def load_stock_pool(
         self,
         pool_name: str
     ) -> Optional[List[str]]:
-        """加载股票池缓存
+        """加载股票池缓�?
         
         Args:
-            pool_name: 股票池名称
+            pool_name: 股票池名�?
             
         Returns:
             股票代码列表，不存在返回None
@@ -170,7 +170,7 @@ class DataCache:
         if filepath.exists():
             with open(filepath, 'r') as f:
                 symbols = [line.strip() for line in f.readlines()]
-            logger.info(f"加载股票池缓存: {filepath}")
+            logger.info(f"加载股票池缓�? {filepath}")
             return symbols
         
         return None
@@ -239,13 +239,13 @@ class DataCache:
         end_date: str,
         max_age_days: int = 7
     ) -> bool:
-        """检查缓存是否有效
+        """检查缓存是否有�?
         
         Args:
             symbol: 股票代码
-            start_date: 开始日期
+            start_date: 开始日�?
             end_date: 结束日期
-            max_age_days: 最大缓存天数
+            max_age_days: 最大缓存天�?
             
         Returns:
             是否有效
@@ -255,7 +255,7 @@ class DataCache:
         if not filepath.exists():
             return False
         
-        # 检查文件修改时间
+        # 检查文件修改时�?
         mtime = datetime.fromtimestamp(filepath.stat().st_mtime)
         age = (datetime.now() - mtime).days
         

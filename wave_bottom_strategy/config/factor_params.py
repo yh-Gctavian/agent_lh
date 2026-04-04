@@ -16,7 +16,7 @@ FACTOR_PARAMS = {
         "weight": 0.15,  # 15% 权重
     },
     
-    # 成交量参数
+    # 成交量参�?
     "volume": {
         "ma_period": 5,
         "weight": 0.15,  # 15% 权重
@@ -36,7 +36,7 @@ FACTOR_PARAMS = {
         "weight": 0.10,  # 10% 权重
     },
     
-    # 布林带参数
+    # 布林带参�?
     "bollinger": {
         "period": 20,
         "std_dev": 2.0,
@@ -46,14 +46,14 @@ FACTOR_PARAMS = {
 
 # 选股参数
 SELECTOR_PARAMS = {
-    # 最小分数阈值
+    # 最小分数阈�?
     "min_score": 60,
     
-    # 最大持仓数量
+    # 最大持仓数�?
     "max_positions": 10,
     
     # 剔除条件
     "exclude_st": True,       # 剔除ST股票
     "exclude_suspended": True, # 剔除停牌股票
-    "exclude_delisted": True,  # 剔除退市股票
+    "exclude_delisted": True,  # 剔除退市股�?
 }

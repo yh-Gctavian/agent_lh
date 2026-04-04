@@ -12,26 +12,18 @@ logger = get_logger('sensitivity_analysis')
 
 
 class SensitivityAnalysis:
-    """参数敏感性分析
-    
-    测试不同参数组合下的策略表现
-    找出最优参数
-    """
+    """参数敏感性分析"""
     
     def __init__(self, param_ranges: Dict[str, List[Any]]):
-        """
+        """初始化
+        
         Args:
-            param_ranges: 参数范围
-                如 {'kdj_n': [5, 9, 14], 'min_score': [50, 60, 70]}
+            param_ranges: 参数范围，如 {'min_score': [50, 60, 70], 'kdj_threshold': [15, 20, 25]}
         """
         self.param_ranges = param_ranges
     
     def generate_combinations(self) -> List[Dict]:
-        """生成参数组合
-        
-        Returns:
-            参数组合列表
-        """
+        """生成参数组合"""
         keys = list(self.param_ranges.keys())
         values = list(self.param_ranges.values())
         
@@ -50,31 +42,30 @@ class SensitivityAnalysis:
         """运行敏感性分析
         
         Args:
-            backtest_func: 回测函数，接受参数字典，返回指标字典
-            base_params: 基础参数（不变的部分）
+            backtest_func: 回测函数
+            base_params: 基础参数
             
         Returns:
             各参数组合的回测结果
         """
-        results = []
         combinations = self.generate_combinations()
+        results = []
         
         for i, params in enumerate(combinations):
-            logger.info(f"参数组合 {i+1}/{len(combinations)}: {params}")
-            
-            # 合并参数
-            full_params = {**(base_params or {}), **params}
+            logger.info(f"进度: {i+1}/{len(combinations)} - {params}")
             
             try:
-                # 运行回测
+                full_params = {**(base_params or {}), **params}
                 metrics = backtest_func(full_params)
                 
-                # 记录结果
-                result = {**params, **metrics}
+                result = {
+                    **params,
+                    **metrics
+                }
                 results.append(result)
                 
             except Exception as e:
-                logger.error(f"参数组合失败: {params}, {e}")
+                logger.warning(f"参数组合失败: {params}, {e}")
                 results.append({**params, 'error': str(e)})
         
         return pd.DataFrame(results)
@@ -93,12 +84,11 @@ class SensitivityAnalysis:
             maximize: 是否最大化
             
         Returns:
-            最优参数组合
+            最优参数
         """
-        # 过滤有效结果
-        valid = results[results[metric].notna()]
+        valid = results[~results.get('error', pd.Series()).notna()]
         
-        if valid.empty:
+        if valid.empty or metric not in valid.columns:
             return {}
         
         if maximize:
@@ -106,77 +96,61 @@ class SensitivityAnalysis:
         else:
             best_idx = valid[metric].idxmin()
         
-        best_row = valid.loc[best_idx]
-        
-        return best_row.to_dict()
+        return valid.loc[best_idx].to_dict()
     
-    def analyze_sensitivity(
+    def get_top_n(
         self,
         results: pd.DataFrame,
-        metric: str = 'sharpe_ratio'
-    ) -> Dict[str, float]:
-        """分析各参数敏感性
+        metric: str = 'sharpe_ratio',
+        n: int = 5
+    ) -> pd.DataFrame:
+        """获取Top N参数组合"""
+        valid = results[~results.get('error', pd.Series()).notna()]
         
-        计算各参数变化对指标的影响程度
+        if valid.empty or metric not in valid.columns:
+            return pd.DataFrame()
         
-        Args:
-            results: 分析结果
-            metric: 目标指标
-            
-        Returns:
-            {参数名: 敏感性系数}
-        """
-        sensitivity = {}
-        
-        for param in self.param_ranges.keys():
-            if param not in results.columns:
-                continue
-            
-            # 按参数值分组计算指标均值
-            grouped = results.groupby(param)[metric].mean()
-            
-            if len(grouped) > 1:
-                # 计算变化范围
-                sensitivity[param] = grouped.std() / abs(grouped.mean()) if grouped.mean() != 0 else 0
-        
-        return sensitivity
-    
-    def grid_search(
-        self,
-        backtest_func: Callable,
-        param_grid: Dict[str, List[Any]],
-        base_params: Dict = None,
-        metric: str = 'sharpe_ratio'
-    ) -> tuple:
-        """网格搜索最优参数
-        
-        Args:
-            backtest_func: 回测函数
-            param_grid: 参数网格
-            base_params: 基础参数
-            metric: 优化指标
-            
-        Returns:
-            (最优参数, 最优结果, 全部结果)
-        """
-        self.param_ranges = param_grid
-        results = self.run_analysis(backtest_func, base_params)
-        optimal = self.find_optimal(results, metric)
-        
-        return optimal, results.loc[results[metric].idxmax()] if metric in results.columns else {}, results
+        return valid.nlargest(n, metric)
 
 
-def default_param_ranges() -> Dict[str, List]:
-    """默认参数范围
+def run_walk_forward(
+    backtest_func: Callable,
+    train_periods: List[tuple],
+    test_periods: List[tuple],
+    params: Dict
+) -> pd.DataFrame:
+    """Walk-Forward验证
     
+    Args:
+        backtest_func: 回测函数
+        train_periods: 训练期列表
+        test_periods: 测试期列表
+        params: 参数
+        
     Returns:
-        默认参数范围字典
+        验证结果
     """
-    return {
-        'min_score': [50, 60, 70, 80],
-        'kdj_threshold': [10, 15, 20, 25],
-        'stop_loss': [-0.03, -0.05, -0.07, -0.10],
-        'take_profit': [0.10, 0.15, 0.20],
-        'max_hold_days': [3, 5, 7, 10],
-        'position_size': [0.05, 0.10, 0.15, 0.20]
-    }
+    results = []
+    
+    for i, (train, test) in enumerate(zip(train_periods, test_periods)):
+        logger.info(f"Walk-Forward: {i+1}/{len(train_periods)}")
+        
+        try:
+            # 训练期优化
+            train_result = backtest_func({**params, 'start': train[0], 'end': train[1]})
+            
+            # 测试期验证
+            test_result = backtest_func({**params, 'start': test[0], 'end': test[1]})
+            
+            results.append({
+                'fold': i + 1,
+                'train_period': train,
+                'test_period': test,
+                'train_return': train_result.get('total_return', 0),
+                'test_return': test_result.get('total_return', 0)
+            })
+            
+        except Exception as e:
+            logger.warning(f"Fold {i+1} 失败: {e}")
+    
+    return pd.DataFrame(results)

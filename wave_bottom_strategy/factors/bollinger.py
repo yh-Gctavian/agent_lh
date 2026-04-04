@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""布林带因子 - 权重5%"""
+"""布林带因�?- 权重5%"""
 
 from typing import Dict, Any
 import pandas as pd
@@ -15,7 +15,7 @@ from .base import Factor
 
 
 class BollingerFactor(Factor):
-    """布林带因子"""
+    """布林带因�?""
     
     def __init__(self, params: Dict[str, Any] = None):
         super().__init__(params)
@@ -38,7 +38,7 @@ class BollingerFactor(Factor):
             'close': close
         })
         
-        # 计算布林带位置
+        # 计算布林带位�?
         result['bb_pos'] = (close - lower) / (upper - lower) * 100
         
         return result
