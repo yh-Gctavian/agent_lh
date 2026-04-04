@@ -2,67 +2,111 @@
 """选股引擎"""
 
 from typing import List, Dict
+from datetime import date
 import pandas as pd
 
 from .filter import StockFilter
 from .scorer import FactorScorer
 from .signal import SignalGenerator
-from factors import KDJFactor
+from data.loader import DataLoader
 from utils.logger import get_logger
 
 logger = get_logger('selector_engine')
 
 
 class SelectorEngine:
-    """选股引擎"""
+    """选股引擎
     
-    def __init__(self):
-        self.filter = StockFilter()
+    执行完整的选股流程
+    """
+    
+    def __init__(
+        self,
+        data_loader: DataLoader = None,
+        min_score: float = 60.0,
+        max_positions: int = 10
+    ):
+        self.data_loader = data_loader or DataLoader()
+        self.stock_filter = StockFilter()
         self.scorer = FactorScorer()
         self.signal_gen = SignalGenerator()
-        self.kdj_factor = KDJFactor()
+        
+        self.min_score = min_score
+        self.max_positions = max_positions
     
     def run(
         self,
-        stock_data: Dict[str, pd.DataFrame],
-        trade_date: str
+        stock_pool: List[str],
+        trade_date: str,
+        start_date: str = None
     ) -> pd.DataFrame:
         """执行选股
         
         Args:
-            stock_data: {symbol: 日K线DataFrame}
+            stock_pool: 股票池
             trade_date: 交易日期
+            start_date: 数据开始日期
             
         Returns:
             选股结果
         """
-        logger.info(f"执行选股: {trade_date}")
+        logger.info(f"选股执行: {trade_date}, 股票池{len(stock_pool)}只")
         
-        results = []
+        # 1. 过滤股票池
+        filtered_pool = self.stock_filter.filter(stock_pool)
         
-        for symbol, data in stock_data.items():
-            # 计算得分
-            scores = self.scorer.score(data)
-            kdj_data = self.kdj_factor.calculate(data)
-            
-            # 生成信号
-            signals = self.signal_gen.generate(scores, kdj_data)
-            signals['ts_code'] = symbol
-            
-            # 取最新一行
-            latest = signals.iloc[-1:].copy()
-            results.append(latest)
+        # 2. 计算各股票因子得分
+        if not start_date:
+            # 默认取60天历史数据用于因子计算
+            start_date = self._get_start_date(trade_date, 60)
         
-        if results:
-            result_df = pd.concat(results, ignore_index=True)
-            # 按得分排序
-            result_df = result_df.sort_values('total_score', ascending=False)
-            logger.info(f"选股完成: {len(result_df)}只股票")
-            return result_df
+        scores_dict = {}
+        kdj_dict = {}
         
-        return pd.DataFrame()
+        for symbol in filtered_pool:
+            try:
+                data = self.data_loader.load_daily_data(
+                    symbol, start_date, trade_date
+                )
+                if data.empty or len(data) < 30:
+                    continue
+                
+                # 计算得分
+                scores = self.scorer.calculate_scores(data)
+                scores_dict[symbol] = scores
+                
+                # 计算KDJ（用于超卖判断）
+                kdj_data = self.scorer.factors['kdj'].calculate(data)
+                kdj_dict[symbol] = kdj_data
+                
+            except Exception as e:
+                logger.warning(f"处理{symbol}失败: {e}")
+        
+        # 3. 排序获取Top股票
+        rankings = self.scorer.rank_stocks(scores_dict, trade_date, self.max_positions)
+        
+        # 4. 生成信号
+        if not rankings.empty:
+            rankings['signal'] = rankings['total_score'].apply(
+                lambda x: 1 if x >= self.min_score else 0
+            )
+        
+        logger.info(f"选股完成: {len(rankings)}只候选")
+        return rankings
     
-    def select_top(self, result: pd.DataFrame, top_n: int = 10) -> List[str]:
-        """选择得分最高的N只股票"""
-        buy_signals = result[result['signal'] == 1]
-        return buy_signals.head(top_n)['ts_code'].tolist()
+    def _get_start_date(self, end_date: str, days: int) -> str:
+        """计算开始日期"""
+        from datetime import datetime, timedelta
+        end_dt = datetime.strptime(end_date.replace('-', ''), '%Y%m%d')
+        start_dt = end_dt - timedelta(days=days * 2)  # 多取一些确保有足够交易日
+        return start_dt.strftime('%Y%m%d')
+    
+    def select_top_stocks(
+        self,
+        result: pd.DataFrame,
+        top_n: int = 5
+    ) -> List[str]:
+        """获取得分最高的N只股票"""
+        if result.empty:
+            return []
+        return result.head(top_n)['symbol'].tolist()
