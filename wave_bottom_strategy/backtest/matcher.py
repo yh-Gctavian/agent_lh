@@ -16,65 +16,65 @@ class Order:
     filled: bool = False
     fill_price: float = 0.0
     fill_date: date = None
-    commission: float = 0.0
 
 
 class OrderMatcher:
-    """订单撮合器
-    
-    费用规则：
-    - 买入佣金：0.03%
-    - 卖出佣金：0.13%（含印花税0.1%）
-    - 滑点：0.1%
-    """
+    """订单撮合器"""
     
     def __init__(
         self,
-        buy_commission: float = 0.0003,  # 买入0.03%
-        sell_commission: float = 0.0013,  # 卖出0.13%
-        slippage: float = 0.001  # 滑点0.1%
+        slippage: float = 0.001,  # 滑点0.1%
+        commission: float = 0.0003  # 佣金0.03%
     ):
-        self.buy_commission = buy_commission
-        self.sell_commission = sell_commission
         self.slippage = slippage
+        self.commission = commission
     
     def match(
         self,
         orders: List[Order],
-        next_day_prices: Dict[str, float],
-        next_day: date
+        next_prices: Dict[str, float]
     ) -> List[Order]:
         """撮合订单（次日开盘价成交）
         
         Args:
             orders: 订单列表
-            next_day_prices: 次日开盘价
-            next_day: 次日日期
+            next_prices: 次日开盘价 {ts_code: price}
             
         Returns:
             撮合后的订单列表
         """
         for order in orders:
-            if order.ts_code not in next_day_prices:
-                continue  # 无法成交
-            
-            base_price = next_day_prices[order.ts_code]
-            
-            # 应用滑点
-            if order.direction == 'buy':
-                fill_price = base_price * (1 + self.slippage)
-                order.commission = order.shares * fill_price * self.buy_commission
-            else:
-                fill_price = base_price * (1 - self.slippage)
-                order.commission = order.shares * fill_price * self.sell_commission
-            
-            order.fill_price = fill_price
-            order.fill_date = next_day
-            order.filled = True
+            if order.ts_code in next_prices:
+                base_price = next_prices[order.ts_code]
+                
+                # 计算滑点
+                if order.direction == 'buy':
+                    order.fill_price = base_price * (1 + self.slippage)
+                else:
+                    order.fill_price = base_price * (1 - self.slippage)
+                
+                order.filled = True
         
         return orders
     
-    def calculate_commission(self, amount: float, direction: str) -> float:
-        """计算佣金"""
-        rate = self.buy_commission if direction == 'buy' else self.sell_commission
-        return max(amount * rate, 5.0)  # 最低5元
+    def calculate_commission(self, amount: float) -> float:
+        """计算佣金（最低5元）"""
+        return max(amount * self.commission, 5.0)
+    
+    def get_total_cost(self, order: Order) -> Dict[str, float]:
+        """获取订单总成本
+        
+        Returns:
+            {amount: 成交金额, commission: 佣金, total: 总成本}
+        """
+        if not order.filled:
+            return {'amount': 0, 'commission': 0, 'total': 0}
+        
+        amount = order.shares * order.fill_price
+        commission = self.calculate_commission(amount)
+        
+        return {
+            'amount': amount,
+            'commission': commission,
+            'total': amount + commission
+        }
