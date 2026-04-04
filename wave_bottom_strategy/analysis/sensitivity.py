@@ -1,24 +1,24 @@
 # -*- coding: utf-8 -*-
-"""参数敏感性分析"""
+"""参数敏感性分�?""
 
 from typing import Dict, List, Any, Callable
 import pandas as pd
 import numpy as np
 from itertools import product
 
-from wave_bottom_strategy.utils.logger import get_logger
+from utils.logger import get_logger
 
 logger = get_logger('sensitivity_analysis')
 
 
 class SensitivityAnalysis:
-    """参数敏感性分析
+    """参数敏感性分�?
     
     测试不同参数组合下的策略表现
     """
     
     def __init__(self, param_ranges: Dict[str, List[Any]] = None):
-        """初始化
+        """初始�?
         
         Args:
             param_ranges: 参数范围，如 {'kdj_n': [5, 9, 14], 'min_score': [50, 60, 70]}
@@ -34,7 +34,7 @@ class SensitivityAnalysis:
         backtest_func: Callable,
         base_params: Dict[str, Any] = None
     ) -> pd.DataFrame:
-        """运行敏感性分析
+        """运行敏感性分�?
         
         Args:
             backtest_func: 回测函数，接受参数字典，返回指标字典
@@ -50,7 +50,7 @@ class SensitivityAnalysis:
         param_combinations = self._generate_combinations()
         total = len(param_combinations)
         
-        logger.info(f"开始敏感性分析，共{total}组参数组合")
+        logger.info(f"开始敏感性分析，共{total}组参数组�?)
         
         for i, params in enumerate(param_combinations):
             if i % 10 == 0:
@@ -82,11 +82,11 @@ class SensitivityAnalysis:
         backtest_func: Callable,
         base_params: Dict[str, Any] = None
     ) -> pd.DataFrame:
-        """单参数敏感性分析
+        """单参数敏感性分�?
         
         Args:
-            param_name: 参数名
-            param_values: 参数值列表
+            param_name: 参数�?
+            param_values: 参数值列�?
             backtest_func: 回测函数
             base_params: 基础参数
             
@@ -119,7 +119,7 @@ class SensitivityAnalysis:
         if not self.param_ranges:
             return [{}]
         
-        # 获取参数名和值列表
+        # 获取参数名和值列�?
         names = list(self.param_ranges.keys())
         value_lists = [self.param_ranges[name] for name in names]
         
@@ -136,7 +136,7 @@ class SensitivityAnalysis:
         metric: str = 'sharpe_ratio',
         maximize: bool = True
     ) -> Dict:
-        """找出最优参数
+        """找出最优参�?
         
         Args:
             results: 分析结果
@@ -144,7 +144,7 @@ class SensitivityAnalysis:
             maximize: 是否最大化
             
         Returns:
-            最优参数组合
+            最优参数组�?
         """
         if results.empty or metric not in results.columns:
             return {}
@@ -188,14 +188,14 @@ class SensitivityAnalysis:
         results: pd.DataFrame,
         metric: str = 'sharpe_ratio'
     ) -> pd.DataFrame:
-        """分析参数敏感性
+        """分析参数敏感�?
         
         Args:
             results: 分析结果
             metric: 分析指标
             
         Returns:
-            各参数的敏感性统计
+            各参数的敏感性统�?
         """
         if results.empty:
             return pd.DataFrame()
@@ -206,10 +206,10 @@ class SensitivityAnalysis:
             if param_name not in results.columns:
                 continue
             
-            # 按参数值分组计算指标均值
+            # 按参数值分组计算指标均�?
             grouped = results.groupby(param_name)[metric].agg(['mean', 'std', 'min', 'max'])
             
-            # 计算敏感性系数（变异系数）
+            # 计算敏感性系数（变异系数�?
             cv = grouped['std'] / grouped['mean'].abs()
             
             sensitivity.append({
@@ -218,7 +218,7 @@ class SensitivityAnalysis:
                 'std': grouped['std'].mean(),
                 'min': grouped['min'].min(),
                 'max': grouped['max'].max(),
-                'sensitivity': cv.mean(),  # 敏感性系数
+                'sensitivity': cv.mean(),  # 敏感性系�?
             })
         
         return pd.DataFrame(sensitivity).sort_values('sensitivity', ascending=False)
