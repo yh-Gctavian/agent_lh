@@ -18,7 +18,6 @@ class BollingerFactor(Factor):
     
     def calculate(self, data: pd.DataFrame) -> pd.DataFrame:
         close = data['close'].values
-        
         mid = np.zeros(len(close))
         upper = np.zeros(len(close))
         lower = np.zeros(len(close))
