@@ -3,18 +3,18 @@
 
 from typing import Dict, Optional
 from pathlib import Path
-from datetime import datetime
 import pandas as pd
+from datetime import datetime
 
-from ..utils.logger import get_logger
+from utils.logger import get_logger
 
-logger = get_logger('reporter')
+logger = get_logger('report_generator')
 
 
 class ReportGenerator:
     """报告生成器
     
-    生成回测分析报告（Markdown/HTML）
+    生成回测分析报告（Markdown格式）
     """
     
     def __init__(self, output_dir: Path = None):
@@ -24,56 +24,41 @@ class ReportGenerator:
     def generate(
         self,
         metrics: Dict,
-        daily_values: pd.DataFrame = None,
-        trade_records: pd.DataFrame = None,
-        sensitivity_result: pd.DataFrame = None,
-        walk_forward_result: pd.DataFrame = None,
-        format: str = 'markdown'
+        daily_values: pd.DataFrame,
+        layer_result: pd.DataFrame = None,
+        sensitivity_result: pd.DataFrame = None
     ) -> Path:
-        """生成报告
+        """生成完整报告
         
         Args:
             metrics: 绩效指标
             daily_values: 每日净值
-            trade_records: 交易记录
+            layer_result: 分层分析结果
             sensitivity_result: 敏感性分析结果
-            walk_forward_result: Walk-Forward结果
-            format: 输出格式
             
         Returns:
             报告文件路径
         """
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        content = self._build_report(
+            metrics, daily_values, layer_result, sensitivity_result
+        )
         
-        if format == 'markdown':
-            content = self._generate_markdown(
-                metrics, daily_values, trade_records,
-                sensitivity_result, walk_forward_result
-            )
-            filename = f"backtest_report_{timestamp}.md"
-        else:
-            content = self._generate_html(
-                metrics, daily_values, trade_records,
-                sensitivity_result, walk_forward_result
-            )
-            filename = f"backtest_report_{timestamp}.html"
-        
+        filename = f"backtest_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
         filepath = self.output_dir / filename
-        filepath.write_text(content, encoding='utf-8')
         
-        logger.info(f"报告生成: {filepath}")
+        filepath.write_text(content, encoding='utf-8')
+        logger.info(f"报告已生成: {filepath}")
         
         return filepath
     
-    def _generate_markdown(
+    def _build_report(
         self,
         metrics: Dict,
         daily_values: pd.DataFrame,
-        trade_records: pd.DataFrame,
-        sensitivity_result: pd.DataFrame,
-        walk_forward_result: pd.DataFrame
+        layer_result: pd.DataFrame,
+        sensitivity_result: pd.DataFrame
     ) -> str:
-        """生成Markdown报告"""
+        """构建报告内容"""
         lines = [
             "# 波段抄底策略回测报告",
             "",
@@ -83,144 +68,138 @@ class ReportGenerator:
             "",
             "## 一、绩效指标",
             "",
+            "### 1.1 收益指标",
+            "",
             "| 指标 | 值 |",
             "|------|------|",
-        ]
-        
-        for key, value in metrics.items():
-            if isinstance(value, float):
-                lines.append(f"| {key} | {value:.4f} |")
-            else:
-                lines.append(f"| {key} | {value} |")
-        
-        lines.extend([
+            f"| 总收益率 | {metrics.get('total_return', 0)*100:.2f}% |",
+            f"| 年化收益率 | {metrics.get('annual_return', 0)*100:.2f}% |",
+            "",
+            "### 1.2 风险指标",
+            "",
+            "| 指标 | 值 |",
+            "|------|------|",
+            f"| 最大回撤 | {metrics.get('max_drawdown', 0)*100:.2f}% |",
+            f"| 年化波动率 | {metrics.get('volatility', 0)*100:.2f}% |",
+            "",
+            "### 1.3 风险调整收益",
+            "",
+            "| 指标 | 值 |",
+            "|------|------|",
+            f"| 夏普比率 | {metrics.get('sharpe_ratio', 0):.2f} |",
+            f"| 卡玛比率 | {metrics.get('calmar_ratio', 0):.2f} |",
+            f"| 索提诺比率 | {metrics.get('sortino_ratio', 0):.2f} |",
+            "",
+            "### 1.4 交易统计",
+            "",
+            "| 指标 | 值 |",
+            "|------|------|",
+            f"| 交易次数 | {metrics.get('trade_count', 0)} |",
+            f"| 胜率 | {metrics.get('win_rate', 0)*100:.1f}% |",
+            f"| 盈亏比 | {metrics.get('profit_loss_ratio', 0):.2f} |",
             "",
             "---",
             "",
-            "## 二、收益曲线",
+        ]
+        
+        # 年度收益
+        if layer_result is not None and not layer_result.empty:
+            lines.extend([
+                "## 二、年度收益分析",
+                "",
+                "| 年份 | 总收益率 | 最大回撤 | 波动率 |",
+                "|------|---------|---------|--------|",
+            ])
+            
+            for _, row in layer_result.iterrows():
+                lines.append(
+                    f"| {int(row['year'])} | {row['total_return']*100:.2f}% | "
+                    f"{row['max_drawdown']*100:.2f}% | {row['volatility']*100:.2f}% |"
+                )
+            
+            lines.extend(["", "---", ""])
+        
+        # 参数优化
+        if sensitivity_result is not None and not sensitivity_result.empty:
+            lines.extend([
+                "## 三、最优参数组合",
+                "",
+                "基于夏普比率排序Top5：",
+                "",
+                "| 排名 | 参数组合 | 夏普比率 | 总收益率 |",
+                "|------|---------|---------|---------|",
+            ])
+            
+            for i, (_, row) in enumerate(sensitivity_result.head(5).iterrows()):
+                lines.append(
+                    f"| {i+1} | - | {row.get('sharpe_ratio', 0):.2f} | "
+                    f"{row.get('total_return', 0)*100:.2f}% |"
+                )
+            
+            lines.extend(["", "---", ""])
+        
+        # 收益曲线说明
+        lines.extend([
+            "## 四、收益曲线",
             "",
-            "（图表待生成）",
+            "（收益曲线图待可视化模块生成）",
+            "",
+            "---",
+            "",
+            "## 五、结论与建议",
+            "",
+            "### 5.1 策略评价",
+            "",
+            "根据回测结果，策略表现如下：",
             "",
         ])
         
-        if daily_values is not None and not daily_values.empty:
-            lines.extend([
-                "### 每日净值统计",
-                "",
-                f"- 期初净值：{daily_values['total_value'].iloc[0]:.2f}",
-                f"- 期末净值：{daily_values['total_value'].iloc[-1]:.2f}",
-                f"- 最高净值：{daily_values['total_value'].max():.2f}",
-                f"- 最低净值：{daily_values['total_value'].min():.2f}",
-                "",
-            ])
+        sharpe = metrics.get('sharpe_ratio', 0)
+        if sharpe > 1:
+            lines.append("- 夏普比率 > 1，策略风险调整收益良好")
+        elif sharpe > 0.5:
+            lines.append("- 夏普比率在0.5-1之间，策略表现一般")
+        else:
+            lines.append("- 夏普比率 < 0.5，策略需要优化")
         
-        if trade_records is not None and not trade_records.empty:
-            lines.extend([
-                "---",
-                "",
-                "## 三、交易记录",
-                "",
-                f"总交易次数：{len(trade_records)}",
-                "",
-            ])
-        
-        if sensitivity_result is not None and not sensitivity_result.empty:
-            lines.extend([
-                "---",
-                "",
-                "## 四、参数敏感性分析",
-                "",
-                sensitivity_result.to_markdown(),
-                "",
-            ])
-        
-        if walk_forward_result is not None and not walk_forward_result.empty:
-            lines.extend([
-                "---",
-                "",
-                "## 五、Walk-Forward验证",
-                "",
-                walk_forward_result.to_markdown(),
-                "",
-            ])
+        max_dd = abs(metrics.get('max_drawdown', 0))
+        if max_dd < 0.1:
+            lines.append("- 最大回撤 < 10%，风险控制良好")
+        elif max_dd < 0.2:
+            lines.append("- 最大回撤在10%-20%，风险适中")
+        else:
+            lines.append("- 最大回撤 > 20%，风险较高")
         
         lines.extend([
+            "",
+            "### 5.2 优化建议",
+            "",
+            "1. 可调整因子权重优化选股效果",
+            "2. 可通过参数敏感性分析寻找最优参数",
+            "3. 建议进行Walk-Forward验证避免过拟合",
+            "",
             "---",
             "",
-            "*报告由量化开发经理 (KkTTM7) 生成*",
+            f"*报告生成于 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*",
         ])
         
         return "\n".join(lines)
     
-    def _generate_html(
-        self,
-        metrics: Dict,
-        daily_values: pd.DataFrame,
-        trade_records: pd.DataFrame,
-        sensitivity_result: pd.DataFrame,
-        walk_forward_result: pd.DataFrame
-    ) -> str:
-        """生成HTML报告"""
-        html = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>波段抄底策略回测报告</title>
-    <style>
-        body {{ font-family: Arial, sans-serif; margin: 20px; }}
-        h1 {{ color: #333; }}
-        h2 {{ color: #666; border-bottom: 1px solid #ccc; }}
-        table {{ border-collapse: collapse; width: 100%; margin: 10px 0; }}
-        th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-        th {{ background-color: #4CAF50; color: white; }}
-        tr:nth-child(even) {{ background-color: #f2f2f2; }}
-    </style>
-</head>
-<body>
-    <h1>波段抄底策略回测报告</h1>
-    <p>生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-    
-    <h2>一、绩效指标</h2>
-    <table>
-        <tr><th>指标</th><th>值</th></tr>
-"""
-        
-        for key, value in metrics.items():
-            if isinstance(value, float):
-                html += f"        <tr><td>{key}</td><td>{value:.4f}</td></tr>\n"
-            else:
-                html += f"        <tr><td>{key}</td><td>{value}</td></tr>\n"
-        
-        html += """
-    </table>
-    
-    <h2>二、收益曲线</h2>
-    <p>（图表待生成）</p>
-    
-    <hr>
-    <p><i>报告由量化开发经理 (KkTTM7) 生成</i></p>
-</body>
-</html>
-"""
-        
-        return html
-    
-    def generate_summary(self, result: Dict) -> str:
+    def generate_summary(self, metrics: Dict) -> str:
         """生成简要摘要
         
         Args:
-            result: 回测结果
+            metrics: 绩效指标
             
         Returns:
             摘要文本
         """
-        summary = f"""
-回测结果摘要：
-- 总收益率: {result.get('total_return', 0):.2%}
-- 年化收益率: {result.get('annual_return', 0):.2%}
-- 最大回撤: {result.get('max_drawdown', 0):.2%}
-- 夏普比率: {result.get('sharpe', 0):.4f}
-- 交易次数: {result.get('trade_count', 0)}
+        return f"""
+=== 回测结果摘要 ===
+
+年化收益: {metrics.get('annual_return', 0)*100:.2f}%
+最大回撤: {metrics.get('max_drawdown', 0)*100:.2f}%
+夏普比率: {metrics.get('sharpe_ratio', 0):.2f}
+胜率: {metrics.get('win_rate', 0)*100:.1f}%
+盈亏比: {metrics.get('profit_loss_ratio', 0):.2f}
 """
-        return summary

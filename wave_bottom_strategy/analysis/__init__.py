@@ -3,14 +3,13 @@
 
 from .metrics import PerformanceMetrics
 from .layering import LayeringAnalysis
-from .sensitivity import SensitivityAnalysis
-from .walk_forward import WalkForwardValidation
+from .sensitivity import SensitivityAnalysis, DEFAULT_PARAM_RANGES
 from .reporter import ReportGenerator
 
 __all__ = [
     'PerformanceMetrics',
-    'LayeringAnalysis',
+    'LayeringAnalysis', 
     'SensitivityAnalysis',
-    'WalkForwardValidation',
+    'DEFAULT_PARAM_RANGES',
     'ReportGenerator'
 ]
