@@ -6,15 +6,15 @@ import pandas as pd
 import itertools
 from datetime import datetime
 
-from wave_bottom_strategy.utils.logger import get_logger
+from ..utils.logger import get_logger
 
 logger = get_logger('grid_search')
 
 
 class GridSearchOptimizer:
-    """网格搜索参数优化�?
+    """网格搜索参数优化?
     
-    在参数空间中搜索最优组�?
+    在参数空间中搜索最优组?
     """
     
     def __init__(self, param_grid: Dict[str, List[Any]]):
@@ -37,14 +37,14 @@ class GridSearchOptimizer:
             metric: 优化目标指标
             
         Returns:
-            最优参数组�?
+            最优参数组?
         """
-        # 生成所有参数组�?
+        # 生成所有参数组?
         keys = list(self.param_grid.keys())
         values = list(self.param_grid.values())
         combinations = list(itertools.product(*values))
         
-        logger.info(f"开始网格搜�? {len(combinations)}组参�?)
+        logger.info(f"开始网格搜? {len(combinations)}组参?)
         
         for i, combo in enumerate(combinations):
             params = dict(zip(keys, combo))
@@ -62,7 +62,7 @@ class GridSearchOptimizer:
             except Exception as e:
                 logger.warning(f"参数组合失败: {params}, {e}")
         
-        # 找出最优参�?
+        # 找出最优参?
         if not self.results:
             return {}
         
@@ -70,12 +70,12 @@ class GridSearchOptimizer:
         best_idx = df[metric].idxmax()
         best_params = df.loc[best_idx].to_dict()
         
-        logger.info(f"最优参�? {best_params}")
+        logger.info(f"最优参? {best_params}")
         
         return best_params
     
     def get_results(self) -> pd.DataFrame:
-        """获取所有结�?""
+        """获取所有结?""
         return pd.DataFrame(self.results)
     
     def get_top_n(self, n: int = 5, metric: str = 'sharpe_ratio') -> pd.DataFrame:
