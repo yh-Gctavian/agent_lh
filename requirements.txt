@@ -18,5 +18,10 @@ plotly>=5.10.0
 # 存储
 pyarrow>=8.0.0  # Parquet支持
 
+# Web API
+fastapi>=0.100.0
+uvicorn>=0.23.0
+pydantic>=2.0.0
+
 # 测试
 pytest>=7.0.0
