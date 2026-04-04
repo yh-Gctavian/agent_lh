@@ -8,8 +8,8 @@ import pandas as pd
 from .filter import StockFilter
 from .scorer import FactorScorer
 from .signal import SignalGenerator
-from data.loader import DataLoader
-from ..utils.logger import get_logger
+from wave_bottom_strategy.data.loader import DataLoader
+from wave_bottom_strategy.utils.logger import get_logger
 
 logger = get_logger('selector_engine')
 
@@ -91,7 +91,7 @@ class SelectorEngine:
                 lambda x: 1 if x >= self.min_score else 0
             )
         
-        logger.info(f"选股完成: {len(rankings)}只�?)
+        logger.info(f"选股完成: {len(rankings)}只?)
         return rankings
     
     def _get_start_date(self, end_date: str, days: int) -> str:

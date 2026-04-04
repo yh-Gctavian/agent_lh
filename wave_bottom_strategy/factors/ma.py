@@ -12,7 +12,7 @@ except ImportError:
     HAS_TALIB = False
 
 from .base import Factor
-from ..utils.logger import get_logger
+from wave_bottom_strategy.utils.logger import get_logger
 
 logger = get_logger('ma_factor')
 

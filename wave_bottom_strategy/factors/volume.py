@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 
 from .base import Factor
-from ..utils.logger import get_logger
+from wave_bottom_strategy.utils.logger import get_logger
 
 logger = get_logger('volume_factor')
 
@@ -69,7 +69,7 @@ class VolumeFactor(Factor):
         result = np.zeros(len(data))
         for i in range(period - 1, len(data)):
             result[i] = data[i-period+1:i+1].mean()
-        # 前period-1个用已有数据�?
+        # 前period-1个用已有数据?
         for i in range(period - 1):
             result[i] = data[:i+1].mean() if i > 0 else data[0]
         return result

@@ -4,7 +4,7 @@
 from typing import List
 import pandas as pd
 
-from ..utils.logger import get_logger
+from wave_bottom_strategy.utils.logger import get_logger
 
 logger = get_logger('signal_generator')
 
@@ -17,9 +17,9 @@ class SignalGenerator:
     
     def __init__(
         self,
-        buy_threshold: float = 70.0,  # 买入�?
-        sell_threshold: float = 30.0,  # 卖出�?
-        kdj_buy_threshold: float = 20.0  # KDJ超卖�?
+        buy_threshold: float = 70.0,  # 买入?
+        sell_threshold: float = 30.0,  # 卖出?
+        kdj_buy_threshold: float = 20.0  # KDJ超卖?
     ):
         self.buy_threshold = buy_threshold
         self.sell_threshold = sell_threshold
