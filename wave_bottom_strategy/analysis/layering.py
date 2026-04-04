@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """分层分析"""
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 import pandas as pd
 import numpy as np
 
@@ -40,24 +40,21 @@ class LayeringAnalysis:
         if len(df) == 0:
             return pd.DataFrame()
         
-        # 分层（按得分分位数）
+        # 分层
         df['layer'] = pd.qcut(df['score'], self.n_layers, labels=False, duplicates='drop')
         
-        # 统计各层
         results = []
-        for layer_id in range(self.n_layers):
-            layer_data = df[df['layer'] == layer_id]
-            
-            if len(layer_data) == 0:
-                continue
+        for layer_id in sorted(df['layer'].unique()):
+            layer_df = df[df['layer'] == layer_id]
             
             results.append({
-                'layer': layer_id + 1,
-                'count': len(layer_data),
-                'mean_return': layer_data['return'].mean(),
-                'std_return': layer_data['return'].std(),
-                'win_rate': (layer_data['return'] > 0).mean(),
-                'mean_score': layer_data['score'].mean()
+                'layer': int(layer_id) + 1,
+                'count': len(layer_df),
+                'mean_return': layer_df['return'].mean(),
+                'std_return': layer_df['return'].std(),
+                'win_rate': (layer_df['return'] > 0).mean(),
+                'min_score': layer_df['score'].min(),
+                'max_score': layer_df['score'].max(),
             })
         
         return pd.DataFrame(results)
@@ -66,7 +63,7 @@ class LayeringAnalysis:
         self,
         factor_values: pd.Series,
         returns: pd.Series,
-        factor_name: str
+        factor_name: str = ''
     ) -> pd.DataFrame:
         """按单个因子值分层
         
@@ -79,37 +76,40 @@ class LayeringAnalysis:
             各层收益率统计
         """
         result = self.layer_by_score(factor_values, returns)
-        result['factor'] = factor_name
+        
+        if not result.empty and factor_name:
+            logger.info(f"{factor_name} 分层分析完成")
+        
         return result
     
-    def multi_factor_layering(
+    def multi_factor_layer(
         self,
-        factor_data: Dict[str, pd.Series],
+        factor_dict: Dict[str, pd.Series],
         returns: pd.Series
-    ) -> pd.DataFrame:
+    ) -> Dict[str, pd.DataFrame]:
         """多因子分层分析
         
         Args:
-            factor_data: {因子名: 因子值}
-            returns: 收益率
+            factor_dict: {因子名: 因子值}
+            returns: 后续收益率
             
         Returns:
-            各因子分层结果
+            {因子名: 分层结果}
         """
-        all_results = []
+        results = {}
         
-        for factor_name, factor_values in factor_data.items():
-            result = self.layer_by_factor(factor_values, returns, factor_name)
-            all_results.append(result)
+        for factor_name, factor_values in factor_dict.items():
+            layer_result = self.layer_by_factor(factor_values, returns, factor_name)
+            results[factor_name] = layer_result
         
-        return pd.concat(all_results, ignore_index=True)
+        return results
     
     def calc_ic(
         self,
         factor_values: pd.Series,
         returns: pd.Series
     ) -> float:
-        """计算IC值（信息系数）
+        """计算IC（信息系数）
         
         Args:
             factor_values: 因子值
@@ -121,17 +121,36 @@ class LayeringAnalysis:
         df = pd.DataFrame({'factor': factor_values, 'return': returns})
         df = df.dropna()
         
-        if len(df) < 2:
+        if len(df) < 10:
             return 0.0
         
-        # Spearman秩相关
-        return df['factor'].corr(df['return'], method='spearman')
+        # 使用秩相关系数
+        ic = df['factor'].rank().corr(df['return'].rank())
+        
+        return ic
+    
+    def calc_ir(
+        self,
+        ic_series: pd.Series
+    ) -> float:
+        """计算IR（信息比率）
+        
+        Args:
+            ic_series: IC序列
+            
+        Returns:
+            IR值
+        """
+        if len(ic_series) == 0 or ic_series.std() == 0:
+            return 0.0
+        
+        return ic_series.mean() / ic_series.std() * np.sqrt(252)
     
     def layer_returns_chart_data(
         self,
         layer_result: pd.DataFrame
     ) -> Dict:
-        """生成分层收益图数据
+        """生成分层收益图表数据
         
         Args:
             layer_result: 分层结果
@@ -139,8 +158,12 @@ class LayeringAnalysis:
         Returns:
             图表数据
         """
+        if layer_result.empty:
+            return {}
+        
         return {
-            'x': layer_result['layer'].tolist(),
-            'mean_return': layer_result['mean_return'].tolist(),
-            'win_rate': layer_result['win_rate'].tolist()
+            'labels': [f"第{int(r['layer'])}层" for _, r in layer_result.iterrows()],
+            'mean_returns': layer_result['mean_return'].tolist(),
+            'win_rates': layer_result['win_rate'].tolist(),
+            'counts': layer_result['count'].tolist(),
         }

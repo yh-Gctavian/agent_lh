@@ -14,7 +14,7 @@ logger = get_logger('report_generator')
 class ReportGenerator:
     """报告生成器
     
-    生成回测分析报告（Markdown/HTML）
+    生成回测分析报告（Markdown格式）
     """
     
     def __init__(self, output_dir: Path = None):
@@ -24,37 +24,46 @@ class ReportGenerator:
     def generate(
         self,
         metrics: Dict,
-        backtest_result: Dict,
+        daily_df: pd.DataFrame = None,
         layer_result: Optional[pd.DataFrame] = None,
         sensitivity_result: Optional[pd.DataFrame] = None,
-        format: str = 'markdown'
+        title: str = "波段抄底策略回测报告"
     ) -> Path:
-        """生成报告"""
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        """生成报告
         
-        if format == 'markdown':
-            content = self._generate_markdown(metrics, backtest_result, layer_result, sensitivity_result)
-            filename = f"backtest_report_{timestamp}.md"
-        else:
-            content = self._generate_html(metrics, backtest_result, layer_result, sensitivity_result)
-            filename = f"backtest_report_{timestamp}.html"
+        Args:
+            metrics: 绩效指标
+            daily_df: 日净值数据
+            layer_result: 分层分析结果
+            sensitivity_result: 敏感性分析结果
+            title: 报告标题
+            
+        Returns:
+            报告文件路径
+        """
+        content = self._build_content(
+            metrics, daily_df, layer_result, sensitivity_result, title
+        )
         
+        filename = f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
         filepath = self.output_dir / filename
-        filepath.write_text(content, encoding='utf-8')
         
-        logger.info(f"报告生成: {filepath}")
+        filepath.write_text(content, encoding='utf-8')
+        logger.info(f"报告已生成: {filepath}")
+        
         return filepath
     
-    def _generate_markdown(
+    def _build_content(
         self,
         metrics: Dict,
-        backtest_result: Dict,
-        layer_result: Optional[pd.DataFrame],
-        sensitivity_result: Optional[pd.DataFrame]
+        daily_df: pd.DataFrame,
+        layer_result: pd.DataFrame,
+        sensitivity_result: pd.DataFrame,
+        title: str
     ) -> str:
-        """生成Markdown报告"""
+        """构建报告内容"""
         lines = [
-            "# 波段抄底策略回测报告",
+            f"# {title}",
             "",
             f"**生成时间：** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             "",
@@ -66,34 +75,40 @@ class ReportGenerator:
             "|------|------|",
         ]
         
-        # 指标映射
+        # 指标表格
         metric_names = {
-            'total_return': '总收益率',
-            'annual_return': '年化收益率',
-            'volatility': '年化波动率',
+            'win_rate': '胜率(%)',
+            'profit_loss_ratio': '盈亏比',
             'sharpe_ratio': '夏普比率',
-            'max_drawdown': '最大回撤',
-            'calmar_ratio': '卡玛比率',
-            'win_rate': '胜率',
-            'profit_loss_ratio': '盈亏比'
+            'max_drawdown': '最大回撤(%)',
+            'annual_return': '年化收益(%)',
+            'volatility': '年化波动(%)',
+            'calmar_ratio': '卡玛比率'
         }
         
-        for key, name in metric_names.items():
-            value = metrics.get(key, 0)
-            if isinstance(value, float):
-                lines.append(f"| {name} | {value:.4f} |")
-            else:
-                lines.append(f"| {name} | {value} |")
+        for key, value in metrics.items():
+            name = metric_names.get(key, key)
+            lines.append(f"| {name} | {value} |")
         
-        lines.extend(["", "---", "", "## 二、回测概况", ""])
+        # 净值曲线
+        if daily_df is not None and not daily_df.empty:
+            lines.extend([
+                "",
+                "---",
+                "",
+                "## 二、净值曲线",
+                "",
+                "| 日期 | 净值 | 收益率 |",
+                "|------|------|--------|"
+            ])
+            
+            for _, row in daily_df.tail(20).iterrows():
+                date_str = str(row.get('date', row.get('trade_date', '')))
+                value = row.get('value', row.get('total_value', 0))
+                ret = row.get('return', 0)
+                lines.append(f"| {date_str} | {value:.2f} | {ret*100:.2f}% |")
         
-        if 'initial' in backtest_result:
-            lines.append(f"- 初始资金: {backtest_result['initial']:,.0f}")
-        if 'final' in backtest_result:
-            lines.append(f"- 最终资金: {backtest_result['final']:,.0f}")
-        if 'trades' in backtest_result:
-            lines.append(f"- 交易次数: {backtest_result['trades']}")
-        
+        # 分层分析
         if layer_result is not None and not layer_result.empty:
             lines.extend([
                 "",
@@ -105,6 +120,7 @@ class ReportGenerator:
                 ""
             ])
         
+        # 参数敏感性
         if sensitivity_result is not None and not sensitivity_result.empty:
             lines.extend([
                 "",
@@ -112,54 +128,48 @@ class ReportGenerator:
                 "",
                 "## 四、参数敏感性分析",
                 "",
-                sensitivity_result.head(10).to_markdown(index=False),
+                "### Top 5 参数组合",
+                "",
+                sensitivity_result.head(5).to_markdown(index=False),
                 ""
             ])
         
+        # 总结
         lines.extend([
             "",
             "---",
             "",
-            "*报告由波段抄底策略系统自动生成*"
+            "## 五、结论",
+            "",
+            f"- 年化收益：{metrics.get('annual_return', 'N/A')}%",
+            f"- 最大回撤：{metrics.get('max_drawdown', 'N/A')}%",
+            f"- 夏普比率：{metrics.get('sharpe_ratio', 'N/A')}",
+            "",
+            "---",
+            "",
+            "*报告由量化开发经理 (KkTTM7) 生成*"
         ])
         
         return "\n".join(lines)
     
-    def _generate_html(
-        self,
-        metrics: Dict,
-        backtest_result: Dict,
-        layer_result: Optional[pd.DataFrame],
-        sensitivity_result: Optional[pd.DataFrame]
-    ) -> str:
-        """生成HTML报告"""
-        # 简化版HTML
-        md_content = self._generate_markdown(metrics, backtest_result, layer_result, sensitivity_result)
+    def generate_simple(self, backtest_result: Dict) -> Path:
+        """生成简单报告
         
-        html = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>波段抄底策略回测报告</title>
-    <style>
-        body {{ font-family: Arial, sans-serif; margin: 40px; }}
-        table {{ border-collapse: collapse; width: 100%; }}
-        th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-        th {{ background-color: #f2f2f2; }}
-        h1 {{ color: #333; }}
-        h2 {{ color: #666; }}
-    </style>
-</head>
-<body>
-    <pre>{md_content}</pre>
-</body>
-</html>"""
+        Args:
+            backtest_result: 回测结果
+            
+        Returns:
+            报告路径
+        """
+        metrics = {
+            'annual_return': backtest_result.get('total_return', 0) * 100,
+            'trade_count': backtest_result.get('trades', 0)
+        }
         
-        return html
-    
-    def generate_summary(
-        self,
-        all_results: List[Dict]
-    ) -> pd.DataFrame:
-        """生成多回测汇总"""
-        return pd.DataFrame(all_results)
+        daily_df = backtest_result.get('daily_df')
+        
+        return self.generate(
+            metrics=metrics,
+            daily_df=daily_df,
+            title="波段抄底策略回测报告"
+        )
