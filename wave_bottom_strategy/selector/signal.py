@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""信号生成?""
+"""信号生成�?""
 
 from typing import List
 import pandas as pd
@@ -10,16 +10,16 @@ logger = get_logger('signal_generator')
 
 
 class SignalGenerator:
-    """信号生成?
+    """信号生成�?
     
     根据因子得分生成买入/卖出信号
     """
     
     def __init__(
         self,
-        buy_threshold: float = 70.0,  # 买入?
-        sell_threshold: float = 30.0,  # 卖出?
-        kdj_buy_threshold: float = 20.0  # KDJ超卖?
+        buy_threshold: float = 70.0,  # 买入阈�?
+        sell_threshold: float = 30.0,  # 卖出阈�?
+        kdj_buy_threshold: float = 20.0  # KDJ超卖阈�?
     ):
         self.buy_threshold = buy_threshold
         self.sell_threshold = sell_threshold
@@ -42,7 +42,7 @@ class SignalGenerator:
         signals = scores.copy()
         signals['signal'] = 0  # 默认持有
         
-        # 买入信号：综合得?>= buy_threshold
+        # 买入信号：综合得�?>= buy_threshold
         signals.loc[signals['total_score'] >= self.buy_threshold, 'signal'] = 1
         
         # 强买入：综合得分高且KDJ超卖
@@ -51,9 +51,9 @@ class SignalGenerator:
                 (signals['total_score'] >= self.buy_threshold) &
                 (kdj_data['j'] < self.kdj_buy_threshold)
             )
-            signals.loc[strong_buy, 'signal'] = 2  # 强买?
+            signals.loc[strong_buy, 'signal'] = 2  # 强买�?
         
-        # 卖出信号：综合得?< sell_threshold
+        # 卖出信号：综合得�?< sell_threshold
         signals.loc[signals['total_score'] < self.sell_threshold, 'signal'] = -1
         
         return signals

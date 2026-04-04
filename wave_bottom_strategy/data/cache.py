@@ -7,7 +7,7 @@ import pandas as pd
 import os
 from datetime import datetime
 
-from wave_bottom_strategy.utils.logger import get_logger
+from utils.logger import get_logger
 
 logger = get_logger('data_cache')
 

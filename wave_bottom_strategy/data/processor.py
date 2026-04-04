@@ -13,10 +13,10 @@ logger = get_logger('data_processor')
 class DataProcessor:
     """数据预处理器
     
-    处理复权、停牌、退市、ST标记等
+    处理复权、停牌、退市、ST标记?
     """
     
-    # ST股票标识关键字
+    # ST股票标识关键?
     ST_KEYWORDS = ['ST', '*ST', 'SST', 'S*ST']
     
     def __init__(self):
@@ -35,28 +35,28 @@ class DataProcessor:
             # 获取ST股票
             df = ak.stock_zh_a_st_em()
             self.st_stocks = set(df['代码'].tolist())
-            logger.info(f"加载ST股票: {len(self.st_stocks)}只")
+            logger.info(f"加载ST股票: {len(self.st_stocks)}?)
             return self.st_stocks
         except Exception as e:
             logger.warning(f"加载ST股票失败: {e}")
             return set()
     
     def load_delisted_stocks(self) -> Set[str]:
-        """加载退市股票列表
+        """加载退市股票列?
         
         Returns:
-            退市股票代码集合
+            退市股票代码集?
         """
         try:
             import akshare as ak
-            # 获取已退市股票
-            df = ak.stock_zh_a_hist_min_em(symbol="退市", adjust='')
+            # 获取已退市股?
+            df = ak.stock_zh_a_hist_min_em(symbol="退?, adjust='')
             if not df.empty:
                 self.delisted_stocks = set(df['代码'].tolist())
-            logger.info(f"加载退市股票: {len(self.delisted_stocks)}只")
+            logger.info(f"加载退市股? {len(self.delisted_stocks)}?)
             return self.delisted_stocks
         except Exception as e:
-            logger.warning(f"加载退市股票失败: {e}")
+            logger.warning(f"加载退市股票失? {e}")
             return set()
     
     def is_st_stock(self, symbol: str, name: str = None) -> bool:
@@ -69,11 +69,11 @@ class DataProcessor:
         Returns:
             是否为ST股票
         """
-        # 从代码判断
+        # 从代码判?
         if symbol in self.st_stocks:
             return True
         
-        # 从名称判断
+        # 从名称判?
         if name:
             for keyword in self.ST_KEYWORDS:
                 if keyword in name:
@@ -89,12 +89,12 @@ class DataProcessor:
         exclude_suspended: bool = False,
         trade_date: str = None
     ) -> List[str]:
-        """过滤股票池
+        """过滤股票?
         
         Args:
             symbols: 原始股票列表
             exclude_st: 是否剔除ST
-            exclude_delisted: 是否剔除退市
+            exclude_delisted: 是否剔除退?
             exclude_suspended: 是否剔除停牌
             trade_date: 交易日期（用于停牌过滤）
             
@@ -106,12 +106,12 @@ class DataProcessor:
         if exclude_st:
             self.load_st_stocks()
             result = [s for s in result if s not in self.st_stocks]
-            logger.info(f"剔除ST后: {len(result)}只")
+            logger.info(f"剔除ST? {len(result)}?)
         
         if exclude_delisted:
             self.load_delisted_stocks()
             result = [s for s in result if s not in self.delisted_stocks]
-            logger.info(f"剔除退市后: {len(result)}只")
+            logger.info(f"剔除退市后: {len(result)}?)
         
         if exclude_suspended and trade_date:
             result = self._filter_suspended(result, trade_date)
@@ -134,7 +134,7 @@ class DataProcessor:
             df = ak.stock_tfp_em()
             suspended = set(df['代码'].tolist())
             result = [s for s in symbols if s not in suspended]
-            logger.info(f"剔除停牌后: {len(result)}只")
+            logger.info(f"剔除停牌? {len(result)}?)
             return result
         except Exception as e:
             logger.warning(f"停牌过滤失败: {e}")
@@ -148,7 +148,7 @@ class DataProcessor:
         """标记停牌日期
         
         Args:
-            df: 日K线数据
+            df: 日K线数?
             symbol: 股票代码
             
         Returns:
@@ -170,10 +170,10 @@ class DataProcessor:
         symbol: str,
         name: str = None
     ) -> pd.DataFrame:
-        """标记ST状态
+        """标记ST状?
         
         Args:
-            df: 日K线数据
+            df: 日K线数?
             symbol: 股票代码
             name: 股票名称
             
@@ -188,10 +188,10 @@ class DataProcessor:
         df: pd.DataFrame,
         symbol: str
     ) -> pd.DataFrame:
-        """验证数据完整性
+        """验证数据完整?
         
         Args:
-            df: 日K线数据
+            df: 日K线数?
             symbol: 股票代码
             
         Returns:
@@ -200,18 +200,18 @@ class DataProcessor:
         if df.empty:
             return df
         
-        # 删除缺失值
+        # 删除缺失?
         df = df.dropna(subset=['open', 'high', 'low', 'close', 'volume'])
         
-        # 检查异常值
+        # 检查异常?
         df = df[df['high'] >= df['low']]  # 最高价>=最低价
         df = df[df['high'] >= df['open']]  # 最高价>=开盘价
-        df = df[df['high'] >= df['close']]  # 最高价>=收盘价
+        df = df[df['high'] >= df['close']]  # 最高价>=收盘?
         df = df[df['low'] <= df['open']]   # 最低价<=开盘价
-        df = df[df['low'] <= df['close']]  # 最低价<=收盘价
-        df = df[df['volume'] >= 0]         # 成交量>=0
+        df = df[df['low'] <= df['close']]  # 最低价<=收盘?
+        df = df[df['volume'] >= 0]         # 成交?=0
         
-        logger.info(f"{symbol} 数据验证完成: {len(df)}条")
+        logger.info(f"{symbol} 数据验证完成: {len(df)}?)
         return df
     
     def fill_missing_dates(
@@ -219,11 +219,11 @@ class DataProcessor:
         df: pd.DataFrame,
         trade_dates: List[str]
     ) -> pd.DataFrame:
-        """填充缺失交易日
+        """填充缺失交易?
         
         Args:
-            df: 日K线数据
-            trade_dates: 完整交易日列表
+            df: 日K线数?
+            trade_dates: 完整交易日列?
             
         Returns:
             填充后的数据
@@ -236,7 +236,7 @@ class DataProcessor:
         
         if missing_dates:
             logger.info(f"填充{len(missing_dates)}个缺失交易日")
-            # 用前一日数据填充（停牌处理）
+            # 用前一日数据填充（停牌处理?
             # TODO: 实现填充逻辑
         
         return df
@@ -247,10 +247,10 @@ class DataProcessor:
         symbol: str,
         name: str = None
     ) -> pd.DataFrame:
-        """执行全部预处理
+        """执行全部预处?
         
         Args:
-            df: 日K线数据
+            df: 日K线数?
             symbol: 股票代码
             name: 股票名称
             
