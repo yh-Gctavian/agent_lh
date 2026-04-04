@@ -76,12 +76,12 @@ class DataLoader:
             if pool_name == 'hs300':
                 # 沪深300成分股
                 df = ak.index_stock_cons_weight_csindex(symbol='000300')
-                return df['成分股代码'].tolist()
+                return df['成分券代码'].tolist()
             
             elif pool_name == 'zz500':
                 # 中证500成分股
                 df = ak.index_stock_cons_weight_csindex(symbol='000905')
-                return df['成分股代码'].tolist()
+                return df['成分券代码'].tolist()
             
             elif pool_name == 'all_a':
                 # 全A股列表
@@ -140,6 +140,9 @@ class DataLoader:
         try:
             # AKShare交易日历
             df = ak.tool_trade_date_hist_sina()
+            
+            # 统一日期类型：将 trade_date 转换为字符串格式 (YYYYMMDD)
+            df['trade_date'] = df['trade_date'].astype(str).str.replace('-', '')
             
             # 过滤日期范围
             df = df[(df['trade_date'] >= start_date) & (df['trade_date'] <= end_date)]
