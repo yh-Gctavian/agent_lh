@@ -13,157 +13,216 @@ logger = get_logger('layering_analysis')
 class LayeringAnalysis:
     """分层分析
     
-    按因子分值分组，分析各组的表现差异
+    按不同维度分组分析策略表现：
+    - 年度
+    - 市场环境（牛市/熊市/震荡）
+    - 行业
+    - 信号强度
     """
     
-    def __init__(self, n_layers: int = 5):
-        self.n_layers = n_layers
+    def __init__(self, daily_values: pd.DataFrame, trade_records: pd.DataFrame = None):
+        self.daily_values = daily_values
+        self.trade_records = trade_records
     
-    def layer_by_score(
-        self,
-        scores: pd.Series,
-        returns: pd.Series
-    ) -> pd.DataFrame:
-        """按得分分层
+    def analyze_by_year(self) -> pd.DataFrame:
+        """按年度分层分析
         
-        Args:
-            scores: 因子得分
-            returns: 后续收益率
-            
         Returns:
-            各层收益率统计
+            年度收益统计
         """
-        # 合并数据
-        df = pd.DataFrame({'score': scores, 'return': returns})
-        df = df.dropna()
-        
-        if len(df) == 0:
+        if self.daily_values.empty:
             return pd.DataFrame()
         
-        # 分层
-        df['layer'] = pd.qcut(df['score'], self.n_layers, labels=False, duplicates='drop')
+        df = self.daily_values.copy()
+        df['date'] = pd.to_datetime(df['date'])
+        df['year'] = df['date'].dt.year
         
         results = []
-        for layer_id in sorted(df['layer'].unique()):
-            layer_df = df[df['layer'] == layer_id]
+        
+        for year, group in df.groupby('year'):
+            if len(group) < 2:
+                continue
+            
+            values = group['total_value']
+            returns = values.pct_change()
+            
+            # 计算峰值和回撤
+            peak = values.expanding().max()
+            drawdown = (values - peak) / peak
             
             results.append({
-                'layer': int(layer_id) + 1,
-                'count': len(layer_df),
-                'mean_return': layer_df['return'].mean(),
-                'std_return': layer_df['return'].std(),
-                'win_rate': (layer_df['return'] > 0).mean(),
-                'min_score': layer_df['score'].min(),
-                'max_score': layer_df['score'].max(),
+                'year': year,
+                'start_value': values.iloc[0],
+                'end_value': values.iloc[-1],
+                'total_return': (values.iloc[-1] - values.iloc[0]) / values.iloc[0],
+                'max_drawdown': drawdown.min(),
+                'volatility': returns.std() * np.sqrt(252),
+                'trade_days': len(group)
             })
         
         return pd.DataFrame(results)
     
-    def layer_by_factor(
+    def analyze_by_market(self, benchmark_data: pd.DataFrame = None) -> pd.DataFrame:
+        """按市场环境分层
+        
+        Args:
+            benchmark_data: 基准数据
+            
+        Returns:
+            市场环境分析结果
+        """
+        # 简化实现：按收益率划分市场环境
+        if self.daily_values.empty:
+            return pd.DataFrame()
+        
+        df = self.daily_values.copy()
+        returns = df['total_value'].pct_change()
+        
+        # 定义市场环境
+        def classify_market(ret):
+            if ret > 0.02:
+                return 'bull'  # 牛市
+            elif ret < -0.02:
+                return 'bear'  # 熊市
+            else:
+                return 'sideways'  # 震荡
+        
+        df['market'] = returns.apply(classify_market)
+        df['date'] = pd.to_datetime(df['date'])
+        
+        results = []
+        for market, group in df.groupby('market'):
+            if len(group) < 2:
+                continue
+            
+            values = group['total_value']
+            results.append({
+                'market': market,
+                'days': len(group),
+                'avg_return': returns.loc[group.index].mean(),
+                'win_rate': len(returns.loc[group.index][returns.loc[group.index] > 0]) / len(group)
+            })
+        
+        return pd.DataFrame(results)
+    
+    def analyze_by_signal_strength(
         self,
-        factor_values: pd.Series,
-        returns: pd.Series,
-        factor_name: str = ''
+        scores: pd.DataFrame,
+        n_groups: int = 5
     ) -> pd.DataFrame:
-        """按单个因子值分层
+        """按信号强度分层
         
         Args:
-            factor_values: 因子值
-            returns: 后续收益率
-            factor_name: 因子名称
+            scores: 因子得分数据
+            n_groups: 分组数
             
         Returns:
-            各层收益率统计
+            信号强度分层结果
         """
-        result = self.layer_by_score(factor_values, returns)
+        if scores.empty or 'total_score' not in scores.columns:
+            return pd.DataFrame()
         
-        if not result.empty and factor_name:
-            logger.info(f"{factor_name} 分层分析完成")
+        # 按得分分组
+        scores['group'] = pd.qcut(
+            scores['total_score'],
+            n_groups,
+            labels=[f'G{i+1}' for i in range(n_groups)],
+            duplicates='drop'
+        )
         
-        return result
+        results = []
+        for group_name, group_data in scores.groupby('group'):
+            results.append({
+                'group': group_name,
+                'count': len(group_data),
+                'avg_score': group_data['total_score'].mean(),
+                'min_score': group_data['total_score'].min(),
+                'max_score': group_data['total_score'].max()
+            })
+        
+        return pd.DataFrame(results)
     
-    def multi_factor_layer(
+    def analyze_by_industry(
         self,
-        factor_dict: Dict[str, pd.Series],
-        returns: pd.Series
-    ) -> Dict[str, pd.DataFrame]:
-        """多因子分层分析
+        trades: pd.DataFrame,
+        industry_map: Dict[str, str] = None
+    ) -> pd.DataFrame:
+        """按行业分层
         
         Args:
-            factor_dict: {因子名: 因子值}
-            returns: 后续收益率
+            trades: 交易记录
+            industry_map: 股票代码->行业映射
             
         Returns:
-            {因子名: 分层结果}
+            行业分析结果
         """
-        results = {}
+        if trades.empty:
+            return pd.DataFrame()
         
-        for factor_name, factor_values in factor_dict.items():
-            layer_result = self.layer_by_factor(factor_values, returns, factor_name)
-            results[factor_name] = layer_result
+        # 简化：如果没有行业映射，返回空
+        if industry_map is None:
+            logger.warning("无行业映射数据")
+            return pd.DataFrame()
         
-        return results
+        trades['industry'] = trades['symbol'].map(industry_map)
+        
+        results = []
+        for industry, group in trades.groupby('industry'):
+            results.append({
+                'industry': industry,
+                'trade_count': len(group),
+                'buy_count': len(group[group['direction'] == 'buy']),
+                'sell_count': len(group[group['direction'] == 'sell'])
+            })
+        
+        return pd.DataFrame(results)
     
-    def calc_ic(
-        self,
-        factor_values: pd.Series,
-        returns: pd.Series
-    ) -> float:
-        """计算IC（信息系数）
+    def rolling_analysis(self, window: int = 60) -> pd.DataFrame:
+        """滚动分析
         
         Args:
-            factor_values: 因子值
-            returns: 收益率
+            window: 滚动窗口大小
             
         Returns:
-            IC值（秩相关系数）
+            滚动指标
         """
-        df = pd.DataFrame({'factor': factor_values, 'return': returns})
-        df = df.dropna()
+        if self.daily_values.empty:
+            return pd.DataFrame()
         
-        if len(df) < 10:
-            return 0.0
+        df = self.daily_values.copy()
+        values = df['total_value']
+        returns = values.pct_change()
         
-        # 使用秩相关系数
-        ic = df['factor'].rank().corr(df['return'].rank())
+        # 滚动收益
+        df['rolling_return'] = values.pct_change(window)
         
-        return ic
+        # 滚动波动率
+        df['rolling_vol'] = returns.rolling(window).std() * np.sqrt(252)
+        
+        # 滚动夏普
+        df['rolling_sharpe'] = returns.rolling(window).mean() / returns.rolling(window).std() * np.sqrt(252)
+        
+        # 滚动最大回撤
+        def rolling_max_dd(series):
+            peak = series.expanding().max()
+            dd = (series - peak) / peak
+            return dd.min()
+        
+        df['rolling_max_dd'] = values.rolling(window).apply(rolling_max_dd)
+        
+        return df
     
-    def calc_ir(
-        self,
-        ic_series: pd.Series
-    ) -> float:
-        """计算IR（信息比率）
+    def get_summary(self) -> Dict:
+        """获取分层分析摘要"""
+        yearly = self.analyze_by_year()
         
-        Args:
-            ic_series: IC序列
-            
-        Returns:
-            IR值
-        """
-        if len(ic_series) == 0 or ic_series.std() == 0:
-            return 0.0
-        
-        return ic_series.mean() / ic_series.std() * np.sqrt(252)
-    
-    def layer_returns_chart_data(
-        self,
-        layer_result: pd.DataFrame
-    ) -> Dict:
-        """生成分层收益图表数据
-        
-        Args:
-            layer_result: 分层结果
-            
-        Returns:
-            图表数据
-        """
-        if layer_result.empty:
+        if yearly.empty:
             return {}
         
         return {
-            'labels': [f"第{int(r['layer'])}层" for _, r in layer_result.iterrows()],
-            'mean_returns': layer_result['mean_return'].tolist(),
-            'win_rates': layer_result['win_rate'].tolist(),
-            'counts': layer_result['count'].tolist(),
+            'best_year': yearly.loc[yearly['total_return'].idxmax(), 'year'],
+            'worst_year': yearly.loc[yearly['total_return'].idxmin(), 'year'],
+            'avg_yearly_return': yearly['total_return'].mean(),
+            'positive_years': len(yearly[yearly['total_return'] > 0]),
+            'negative_years': len(yearly[yearly['total_return'] < 0])
         }
