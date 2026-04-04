@@ -8,210 +8,165 @@ from datetime import datetime
 from config import settings, FACTOR_PARAMS, SELECTOR_PARAMS
 from data.loader import DataLoader
 from data.processor import DataProcessor
-from data.cache import DataCache
 from selector.engine import SelectorEngine
 from backtest.engine import BacktestEngine
 from analysis.metrics import PerformanceMetrics
+from analysis.layering import LayeringAnalysis
+from analysis.sensitivity import SensitivityAnalysis
 from analysis.reporter import ReportGenerator
 from utils.logger import get_logger
 
-logger = get_logger('wave_bottom', settings.log_level, settings.log_file)
+logger = get_logger('main')
 
 
-def run_backtest(start_date: str, end_date: str, initial_capital: float = 1000000.0):
-    """运行回测
-    
-    Args:
-        start_date: 开始日期 (YYYY-MM-DD)
-        end_date: 结束日期 (YYYY-MM-DD)
-        initial_capital: 初始资金
-    """
-    logger.info(f"开始回测: {start_date} -> {end_date}")
-    logger.info(f"初始资金: {initial_capital:,.0f}")
+def run_backtest(args):
+    """运行回测"""
+    logger.info("=" * 50)
+    logger.info("波段抄底策略回测")
+    logger.info("=" * 50)
     
     # 初始化组件
+    selector = SelectorEngine()
     engine = BacktestEngine(
-        initial_capital=initial_capital,
-        max_positions=SELECTOR_PARAMS.get('max_positions', 10)
+        selector=selector,
+        initial_capital=args.capital,
+        max_positions=args.max_positions
     )
     
     # 运行回测
     result = engine.run(
-        start_date=start_date,
-        end_date=end_date,
-        stock_pool=None  # 使用默认沪深300
+        start_date=args.start,
+        end_date=args.end,
+        stock_pool=None,  # 使用默认沪深300
+        rebalance_freq=args.rebalance_freq
     )
     
-    if 'error' in result:
-        logger.error(f"回测失败: {result['error']}")
-        return
-    
-    # 计算绩效指标
-    daily_df = result.get('daily_df')
-    if daily_df is not None and not daily_df.empty:
-        metrics = PerformanceMetrics(returns=daily_df['return'])
-        metrics_dict = metrics.get_all_metrics()
+    # 计算指标
+    if 'daily_values' in result:
+        metrics_calc = PerformanceMetrics(
+            result['daily_values'],
+            result.get('trade_records')
+        )
+        metrics = metrics_calc.calculate_all()
         
-        # 打印结果
-        logger.info("\n" + "="*50)
-        logger.info("回测结果:")
-        logger.info(f"  初始资金: {result['initial']:,.0f}")
-        logger.info(f"  最终净值: {result['final']:,.0f}")
-        logger.info(f"  总收益率: {result['total_return']:.2%}")
-        logger.info(f"  交易次数: {result['trades']}")
-        logger.info("")
-        logger.info("绩效指标:")
-        logger.info(f"  夏普比率: {metrics_dict['sharpe_ratio']:.2f}")
-        logger.info(f"  最大回撤: {metrics_dict['max_drawdown']:.2%}")
-        logger.info(f"  年化收益: {metrics_dict['annual_return']:.2%}")
-        logger.info("="*50)
+        # 分层分析
+        layering = LayeringAnalysis(result['daily_values'])
+        yearly_result = layering.analyze_by_year()
         
         # 生成报告
         reporter = ReportGenerator()
         report_path = reporter.generate(
-            metrics=metrics_dict,
-            backtest_result=result
+            metrics,
+            result['daily_values'],
+            yearly_result
         )
+        
+        # 输出摘要
+        print(metrics_calc.get_statistics_summary())
+        
         logger.info(f"报告已生成: {report_path}")
     
     logger.info("回测完成")
     return result
 
 
-def run_select(trade_date: str, top_n: int = 10):
-    """执行选股
-    
-    Args:
-        trade_date: 交易日期 (YYYY-MM-DD)
-        top_n: 返回数量
-    """
-    logger.info(f"执行选股: {trade_date}")
+def run_select(args):
+    """运行选股"""
+    logger.info("执行选股...")
     
     selector = SelectorEngine()
     
-    from datetime import datetime
-    dt = datetime.strptime(trade_date, '%Y-%m-%d').date()
-    
     result = selector.run(
-        trade_date=dt,
+        trade_date=datetime.now().date(),
         stock_pool=None,
-        top_n=top_n,
-        min_score=SELECTOR_PARAMS.get('min_score', 60)
+        top_n=args.top_n
     )
     
-    if result.empty:
-        logger.warning("无选股结果")
-        return
-    
-    logger.info(f"\n选股结果 (Top {top_n}):")
-    logger.info("-"*60)
-    
-    for i, row in result.iterrows():
-        logger.info(f"  {row.get('ts_code', 'N/A')}: 得分 {row.get('total_score', 0):.2f}")
+    print("\n=== 选股结果 ===")
+    print(result)
     
     return result
 
 
-def test_factor_calculation(symbol: str = '000001'):
-    """测试因子计算
+def run_optimize(args):
+    """运行参数优化"""
+    logger.info("执行参数优化...")
     
-    Args:
-        symbol: 股票代码
-    """
-    logger.info(f"测试因子计算: {symbol}")
+    sensitivity = SensitivityAnalysis()
     
-    # 加载数据
-    loader = DataLoader()
-    df = loader.load_daily_data(symbol, '20200101', '20251231', 'qfq')
+    # 定义参数范围
+    param_grid = {
+        'min_score': [60, 70, 80],
+        'rebalance_freq': [5, 10, 20]
+    }
     
-    if df.empty:
-        logger.error("数据加载失败")
-        return
+    def backtest_wrapper(params):
+        selector = SelectorEngine()
+        engine = BacktestEngine(selector=selector)
+        
+        result = engine.run(
+            start_date='2020-01-01',
+            end_date='2023-12-31',
+            rebalance_freq=params.get('rebalance_freq', 5)
+        )
+        
+        return result
     
-    logger.info(f"数据加载成功: {len(df)}条")
+    # 网格搜索
+    results = sensitivity.grid_search(
+        param_grid,
+        backtest_wrapper
+    )
     
-    # 计算因子
-    from selector.scorer import FactorScorer
-    scorer = FactorScorer()
+    # 最优参数
+    optimal = sensitivity.find_optimal_params(results)
     
-    scores = scorer.score_stock(df)
+    print("\n=== 最优参数 ===")
+    print(optimal)
     
-    logger.info(f"\n最新因子得分:")
-    for col in scores.columns:
-        if 'score' in col:
-            logger.info(f"  {col}: {scores[col].iloc[-1]:.2f}")
-    
-    return scores
+    return optimal
 
 
 def main():
     """主函数"""
     parser = argparse.ArgumentParser(
         description='波段抄底策略',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-示例:
-  # 运行回测
-  python main.py --mode backtest --start 2020-01-01 --end 2025-12-31
-  
-  # 执行选股
-  python main.py --mode select --date 2025-01-15 --top 10
-  
-  # 测试因子
-  python main.py --mode test_factor --symbol 000001
-        """
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
     
-    parser.add_argument(
-        '--mode',
-        choices=['backtest', 'select', 'test_factor'],
-        default='backtest',
-        help='运行模式'
-    )
-    parser.add_argument(
-        '--start',
-        default=settings.backtest_start,
-        help='开始日期 (YYYY-MM-DD)'
-    )
-    parser.add_argument(
-        '--end',
-        default=settings.backtest_end,
-        help='结束日期 (YYYY-MM-DD)'
-    )
-    parser.add_argument(
-        '--capital',
-        type=float,
-        default=1000000.0,
-        help='初始资金'
-    )
-    parser.add_argument(
-        '--date',
-        help='选股日期 (YYYY-MM-DD)'
-    )
-    parser.add_argument(
-        '--top',
-        type=int,
-        default=10,
-        help='选股数量'
-    )
-    parser.add_argument(
-        '--symbol',
-        default='000001',
-        help='股票代码（测试用）'
-    )
+    subparsers = parser.add_subparsers(dest='mode', help='运行模式')
+    
+    # 回测模式
+    backtest_parser = subparsers.add_parser('backtest', help='运行回测')
+    backtest_parser.add_argument('--start', default='2020-01-01',
+                                  help='开始日期')
+    backtest_parser.add_argument('--end', default='2025-12-31',
+                                  help='结束日期')
+    backtest_parser.add_argument('--capital', type=float, default=1000000,
+                                  help='初始资金')
+    backtest_parser.add_argument('--max-positions', type=int, default=10,
+                                  help='最大持仓数')
+    backtest_parser.add_argument('--rebalance-freq', type=int, default=5,
+                                  help='调仓频率(天)')
+    
+    # 选股模式
+    select_parser = subparsers.add_parser('select', help='执行选股')
+    select_parser.add_argument('--top-n', type=int, default=10,
+                                help='返回股票数')
+    
+    # 优化模式
+    optimize_parser = subparsers.add_parser('optimize', help='参数优化')
     
     args = parser.parse_args()
     
     if args.mode == 'backtest':
-        run_backtest(args.start, args.end, args.capital)
-    
+        run_backtest(args)
     elif args.mode == 'select':
-        if not args.date:
-            args.date = datetime.now().strftime('%Y-%m-%d')
-        run_select(args.date, args.top)
-    
-    elif args.mode == 'test_factor':
-        test_factor_calculation(args.symbol)
+        run_select(args)
+    elif args.mode == 'optimize':
+        run_optimize(args)
+    else:
+        parser.print_help()
 
 
 if __name__ == '__main__':
