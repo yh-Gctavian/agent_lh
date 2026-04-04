@@ -14,7 +14,9 @@ class Portfolio:
     
     @property
     def total_value(self) -> float:
-        return self.cash + sum(p['value'] for p in self.positions.values())
+        """总资产"""
+        position_value = sum(p.get('value', 0) for p in self.positions.values())
+        return self.cash + position_value
     
     def buy(self, ts_code: str, shares: int, price: float) -> bool:
         """买入"""
@@ -22,7 +24,11 @@ class Portfolio:
         if amount > self.cash:
             return False
         self.cash -= amount
-        self.positions[ts_code] = {'shares': shares, 'price': price, 'value': amount}
+        self.positions[ts_code] = {
+            'shares': shares,
+            'price': price,
+            'value': amount
+        }
         return True
     
     def sell(self, ts_code: str, shares: int, price: float) -> bool:
