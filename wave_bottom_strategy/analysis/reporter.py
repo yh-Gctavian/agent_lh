@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 from datetime import datetime
 
-from utils.logger import get_logger
+from ..utils.logger import get_logger
 
 logger = get_logger('report_generator')
 
