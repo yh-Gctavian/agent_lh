@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""参数优化模块 - 寻找最优参数组�?""
+"""参数优化模块 - 寻找最优参数组合"""
 
 from typing import Dict, List, Any, Tuple
 from itertools import product
@@ -16,9 +16,9 @@ logger = get_logger('param_optimizer')
 
 
 class ParamOptimizer:
-    """参数优化�?
+    """参数优化器
     
-    通过网格搜索寻找最优参数组�?
+    通过网格搜索寻找最优参数组合
     """
     
     def __init__(
@@ -68,7 +68,7 @@ class ParamOptimizer:
         
         Args:
             param_grid: 参数网格
-            stock_pool: 股票�?
+            stock_pool: 股票池
             max_combinations: 最大组合数
             
         Returns:
@@ -77,16 +77,16 @@ class ParamOptimizer:
         if param_grid is None:
             param_grid = self.define_param_grid()
         
-        # 生成所有参数组�?
+        # 生成所有参数组合
         keys = param_grid.keys()
         values = param_grid.values()
         combinations = list(product(*values))
         
-        logger.info(f"参数组合�? {len(combinations)}")
+        logger.info(f"参数组合数: {len(combinations)}")
         
-        # 限制组合�?
+        # 限制组合数
         if len(combinations) > max_combinations:
-            logger.warning(f"组合数超过{max_combinations}，随机采�?)
+            logger.warning(f"组合数超过{max_combinations}，随机采样")
             import random
             combinations = random.sample(combinations, max_combinations)
         
@@ -141,14 +141,14 @@ class ParamOptimizer:
     
     def walk_forward_validation(
         self,
-        window_size: int = 252,  # 1�?
+        window_size: int = 252,  # 1年
         step_size: int = 63      # 3个月
     ) -> pd.DataFrame:
         """Walk-Forward验证
         
         Args:
-            window_size: 训练窗口大小（天�?
-            step_size: 步进大小（天�?
+            window_size: 训练窗口大小（天）
+            step_size: 步进大小（天）
             
         Returns:
             验证结果
@@ -174,7 +174,7 @@ class ParamOptimizer:
             
             logger.info(f"窗口: {current.date()} - {test_end.date()}")
             
-            # TODO: 在训练窗口优化参数，在测试窗口验�?
+            # TODO: 在训练窗口优化参数，在测试窗口验证
             
             current = train_end + pd.Timedelta(days=1)
         
@@ -185,14 +185,14 @@ class ParamOptimizer:
         metric: str = 'sharpe_ratio',
         top_n: int = 5
     ) -> pd.DataFrame:
-        """找出最优参�?
+        """找出最优参数
         
         Args:
             metric: 优化指标
-            top_n: 返回前N�?
+            top_n: 返回前N个
             
         Returns:
-            最优参数组�?
+            最优参数组合
         """
         if not self.results:
             logger.error("无优化结果，请先运行grid_search")
@@ -200,7 +200,7 @@ class ParamOptimizer:
         
         df = pd.DataFrame(self.results)
         
-        # 按指标排�?
+        # 按指标排序
         sorted_df = df.sort_values(metric, ascending=False)
         
         return sorted_df.head(top_n)
@@ -208,7 +208,7 @@ class ParamOptimizer:
     def generate_report(self) -> str:
         """生成优化报告"""
         if not self.results:
-            return "无优化结�?
+            return "无优化结果"
         
         df = pd.DataFrame(self.results)
         
@@ -217,9 +217,9 @@ class ParamOptimizer:
         report = f"""# 参数优化报告
 
 ## 优化设置
-- 训练�? {self.train_start} ~ {self.train_end}
-- 测试�? {self.test_start} ~ {self.test_end}
-- 组合�? {len(self.results)}
+- 训练集: {self.train_start} ~ {self.train_end}
+- 测试集: {self.test_start} ~ {self.test_end}
+- 组合数: {len(self.results)}
 
 ## 最优参数组合（按夏普比率）
 
@@ -227,11 +227,11 @@ class ParamOptimizer:
 
 ## 统计摘要
 
-| 指标 | 均�?| 最�?| 最�?|
+| 指标 | 均值 | 最大 | 最小 |
 |------|------|------|------|
 | 总收益率 | {df['total_return'].mean():.2%} | {df['total_return'].max():.2%} | {df['total_return'].min():.2%} |
 | 夏普比率 | {df['sharpe_ratio'].mean():.2f} | {df['sharpe_ratio'].max():.2f} | {df['sharpe_ratio'].min():.2f} |
-| 最大回�?| {df['max_drawdown'].mean():.2%} | {df['max_drawdown'].max():.2%} | {df['max_drawdown'].min():.2%} |
+| 最大回撤 | {df['max_drawdown'].mean():.2%} | {df['max_drawdown'].max():.2%} | {df['max_drawdown'].min():.2%} |
 """
         
         return report
@@ -244,10 +244,10 @@ def run_optimization():
     # 网格搜索
     results = optimizer.grid_search(max_combinations=20)
     
-    # 找最优参�?
+    # 找最优参数
     optimal = optimizer.find_optimal_params()
     
-    print("\n最优参数组�?")
+    print("\n最优参数组合:")
     print(optimal)
     
     # 生成报告
@@ -256,7 +256,7 @@ def run_optimization():
     # 保存报告
     report_path = Path('docs/参数优化报告.md')
     report_path.write_text(report, encoding='utf-8')
-    print(f"\n报告已保�? {report_path}")
+    print(f"\n报告已保存: {report_path}")
     
     return optimal
 

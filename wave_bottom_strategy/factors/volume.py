@@ -9,11 +9,7 @@ from .base import Factor
 
 
 class VolumeFactor(Factor):
-    """成交量因子
-    
-    参数:
-        ma_period: 均量周期，默认5
-    """
+    """成交量因子"""
     
     def __init__(self, params: Dict[str, Any] = None):
         super().__init__(params)
@@ -21,25 +17,18 @@ class VolumeFactor(Factor):
     
     def calculate(self, data: pd.DataFrame) -> pd.DataFrame:
         volume = data['volume'].values
-        close = data['close'].values
         
         result = pd.DataFrame()
         result['trade_date'] = data['trade_date'] if 'trade_date' in data.columns else data.index
         result['volume'] = volume
         
-        result['vol_ma'] = self._calculate_ma(volume, self.ma_period)
+        result['vol_ma'] = self._calc_ma(volume, self.ma_period)
         result['vol_ratio'] = volume / result['vol_ma']
-        
-        if 'turn' in data.columns:
-            result['turn'] = data['turn']
-        
-        result['low_vol_days'] = self._count_low_vol_days(volume, result['vol_ma'].values)
-        result['is_high_vol'] = result['vol_ratio'] > 2
-        result['is_low_vol'] = result['vol_ratio'] < 0.5
+        result['low_vol_days'] = self._count_low_vol(volume, result['vol_ma'].values)
         
         return result
     
-    def _calculate_ma(self, data: np.ndarray, period: int) -> np.ndarray:
+    def _calc_ma(self, data, period):
         result = np.zeros(len(data))
         for i in range(period - 1, len(data)):
             result[i] = data[i-period+1:i+1].mean()
@@ -47,7 +36,7 @@ class VolumeFactor(Factor):
             result[i] = data[:i+1].mean() if i > 0 else data[0]
         return result
     
-    def _count_low_vol_days(self, volume: np.ndarray, vol_ma: np.ndarray) -> np.ndarray:
+    def _count_low_vol(self, volume, vol_ma):
         result = np.zeros(len(volume))
         count = 0
         for i in range(len(volume)):
@@ -63,7 +52,6 @@ class VolumeFactor(Factor):
         vol_ratio = vol_data['vol_ratio']
         
         score = pd.Series(40.0, index=vol_data.index)
-        
         score.loc[low_vol_days >= 5] = 90
         score.loc[(low_vol_days >= 3) & (low_vol_days < 5)] = 80
         score.loc[(low_vol_days >= 1) & (low_vol_days < 3)] = 60

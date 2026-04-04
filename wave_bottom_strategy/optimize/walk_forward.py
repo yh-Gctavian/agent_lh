@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
-from ..utils.logger import get_logger
+from utils.logger import get_logger
 
 logger = get_logger('walk_forward')
 
@@ -14,8 +14,8 @@ logger = get_logger('walk_forward')
 class WalkForwardValidator:
     """Walk-Forward验证
     
-    样本内训练，样本外测?
-    防止过拟?
+    样本内训练，样本外测试
+    防止过拟合
     """
     
     def __init__(
@@ -29,9 +29,9 @@ class WalkForwardValidator:
         """
         Args:
             backtest_func: 回测函数
-            train_start: 训练开始日?
+            train_start: 训练开始日期
             train_end: 训练结束日期
-            test_start: 测试开始日?
+            test_start: 测试开始日期
             test_end: 测试结束日期
         """
         self.backtest_func = backtest_func
@@ -54,16 +54,16 @@ class WalkForwardValidator:
         """
         metrics = metrics or ['total_return', 'sharpe_ratio', 'max_drawdown']
         
-        # 训练期回?
-        logger.info(f"训练期回? {self.train_period}")
+        # 训练期回测
+        logger.info(f"训练期回测: {self.train_period}")
         train_params = params.copy()
         train_params['start_date'] = self.train_period[0]
         train_params['end_date'] = self.train_period[1]
         
         train_results = self.backtest_func(train_params)
         
-        # 测试期回?
-        logger.info(f"测试期回? {self.test_period}")
+        # 测试期回测
+        logger.info(f"测试期回测: {self.test_period}")
         test_params = params.copy()
         test_params['start_date'] = self.test_period[0]
         test_params['end_date'] = self.test_period[1]
@@ -103,7 +103,7 @@ class WalkForwardValidator:
             params_list: 参数组合列表
             
         Returns:
-            验证结果对比?
+            验证结果对比表
         """
         results = []
         
@@ -134,7 +134,7 @@ class WalkForwardValidator:
         decay_col = f'{metric}_decay'
         test_col = f'test_{metric}'
         
-        # 筛选衰减率在阈值内?
+        # 筛选衰减率在阈值内的
         robust = validation_results[
             validation_results[decay_col] >= -max_decay
         ]
@@ -149,7 +149,7 @@ class WalkForwardValidator:
     def rolling_validate(
         self,
         params: Dict[str, Any],
-        window_size: int = 252,  # 一?
+        window_size: int = 252,  # 一年
         step: int = 63           # 一季度
     ) -> pd.DataFrame:
         """滚动Walk-Forward验证
@@ -189,9 +189,9 @@ class WalkForwardValidator:
 
 
 class ParameterStabilityAnalyzer:
-    """参数稳定性分?
+    """参数稳定性分析
     
-    检验参数在不同时期的表现稳定?
+    检验参数在不同时期的表现稳定性
     """
     
     def __init__(self, backtest_func: Callable):
@@ -202,14 +202,14 @@ class ParameterStabilityAnalyzer:
         params: Dict[str, Any],
         periods: List[Tuple[str, str]]
     ) -> pd.DataFrame:
-        """分析参数在各时期的稳定?
+        """分析参数在各时期的稳定性
         
         Args:
             params: 参数
             periods: 时期列表 [(start, end), ...]
             
         Returns:
-            各时期表?
+            各时期表现
         """
         results = []
         
@@ -224,7 +224,7 @@ class ParameterStabilityAnalyzer:
         
         df = pd.DataFrame(results)
         
-        # 计算稳定性指?
+        # 计算稳定性指标
         stability = {
             'return_std': df['total_return'].std() if 'total_return' in df else 0,
             'sharpe_std': df['sharpe_ratio'].std() if 'sharpe_ratio' in df else 0,

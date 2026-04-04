@@ -1,24 +1,24 @@
 # -*- coding: utf-8 -*-
-"""鍥犲瓙妯″潡娴嬭瘯"""
+"""因子模块测试"""
 
 import pytest
 import pandas as pd
 import numpy as np
 
-from wave_bottom_strategy.factors.kdj import KDJFactor
-from wave_bottom_strategy.factors.ma import MAFactor
-from wave_bottom_strategy.factors.volume import VolumeFactor
-from wave_bottom_strategy.factors.rsi import RSIFactor
-from wave_bottom_strategy.factors.macd import MACDFactor
-from wave_bottom_strategy.factors.bollinger import BollingerFactor
+from factors.kdj import KDJFactor
+from factors.ma import MAFactor
+from factors.volume import VolumeFactor
+from factors.rsi import RSIFactor
+from factors.macd import MACDFactor
+from factors.bollinger import BollingerFactor
 
 
 class TestKDJFactor:
-    """KDJ鍥犲瓙娴嬭瘯"""
+    """KDJ因子测试"""
     
     @pytest.fixture
     def sample_data(self):
-        """鐢熸垚娴嬭瘯鏁版嵁"""
+        """生成测试数据"""
         np.random.seed(42)
         n = 100
         return pd.DataFrame({
@@ -31,7 +31,7 @@ class TestKDJFactor:
         })
     
     def test_kdj_calculate(self, sample_data):
-        """娴嬭瘯KDJ璁＄畻"""
+        """测试KDJ计算"""
         factor = KDJFactor()
         result = factor.calculate(sample_data)
         
@@ -40,7 +40,7 @@ class TestKDJFactor:
         assert 'j' in result.columns
     
     def test_kdj_score(self, sample_data):
-        """娴嬭瘯KDJ璇勫垎"""
+        """测试KDJ评分"""
         factor = KDJFactor()
         kdj_data = factor.calculate(sample_data)
         scores = factor.get_score(kdj_data)
@@ -49,13 +49,13 @@ class TestKDJFactor:
         assert scores.min() >= 0
     
     def test_kdj_weight(self):
-        """娴嬭瘯KDJ鏉冮噸"""
+        """测试KDJ权重"""
         factor = KDJFactor()
         assert factor.weight == 0.45
 
 
 class TestMAFactor:
-    """鍧囩嚎鍥犲瓙娴嬭瘯"""
+    """均线因子测试"""
     
     @pytest.fixture
     def sample_data(self):
@@ -83,7 +83,7 @@ class TestMAFactor:
 
 
 class TestVolumeFactor:
-    """鎴愪氦閲忓洜瀛愭祴璇?""
+    """成交量因子测试"""
     
     @pytest.fixture
     def sample_data(self):
@@ -110,7 +110,7 @@ class TestVolumeFactor:
 
 
 class TestRSIFactor:
-    """RSI鍥犲瓙娴嬭瘯"""
+    """RSI因子测试"""
     
     @pytest.fixture
     def sample_data(self):
@@ -133,7 +133,7 @@ class TestRSIFactor:
 
 
 class TestMACDFactor:
-    """MACD鍥犲瓙娴嬭瘯"""
+    """MACD因子测试"""
     
     @pytest.fixture
     def sample_data(self):
@@ -158,7 +158,7 @@ class TestMACDFactor:
 
 
 class TestBollingerFactor:
-    """甯冩灄甯﹀洜瀛愭祴璇?""
+    """布林带因子测试"""
     
     @pytest.fixture
     def sample_data(self):

@@ -1,99 +1,85 @@
 # -*- coding: utf-8 -*-
-"""波段抄底策略 - 主入口"""
+"""波段抄底策略主入口"""
 
 import argparse
 from pathlib import Path
-from datetime import datetime
-import pandas as pd
 import sys
 
-# 添加项目根目录到路径
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# 添加项目路径
+sys.path.insert(0, str(Path(__file__).parent))
 
-# 支持两种导入方式
-try:
-    from wave_bottom_strategy.config import settings, FACTOR_PARAMS, SELECTOR_PARAMS
-    from wave_bottom_strategy.data.loader import DataLoader
-    from wave_bottom_strategy.data.processor import DataProcessor
-    from wave_bottom_strategy.data.cache import DataCache
-    from wave_bottom_strategy.selector.engine import SelectorEngine
-    from wave_bottom_strategy.backtest.engine import BacktestEngine
-    from wave_bottom_strategy.analysis.metrics import PerformanceMetrics
-    from wave_bottom_strategy.analysis.layering import LayeringAnalysis
-    from wave_bottom_strategy.analysis.sensitivity import SensitivityAnalysis
-    from wave_bottom_strategy.analysis.reporter import ReportGenerator
-    from wave_bottom_strategy.utils.logger import get_logger
-except ImportError:
-    from config import settings, FACTOR_PARAMS, SELECTOR_PARAMS
-    from data.loader import DataLoader
-    from data.processor import DataProcessor
-    from data.cache import DataCache
-    from selector.engine import SelectorEngine
-    from backtest.engine import BacktestEngine
-    from analysis.metrics import PerformanceMetrics
-    from analysis.layering import LayeringAnalysis
-    from analysis.sensitivity import SensitivityAnalysis
-    from analysis.reporter import ReportGenerator
-    from utils.logger import get_logger
+from config import settings, FACTOR_PARAMS, SELECTOR_PARAMS
+from utils.logger import get_logger
 
-logger = get_logger('main', settings.log_level)
+logger = get_logger('wave_bottom', settings.log_level, settings.log_file)
 
 
-def run_backtest(start_date: str, end_date: str, initial_capital: float = 1000000):
-    """运行完整回测流程
+def run_backtest(start_date: str, end_date: str, capital: float = None):
+    """运行回测
     
     Args:
         start_date: 开始日期
         end_date: 结束日期
-        initial_capital: 初始资金
+        capital: 初始资金
     """
-    logger.info(f"开始回测: {start_date} ~ {end_date}")
+    from run import StrategyRunner
     
-    # 初始化组件
-    data_loader = DataLoader()
-    selector = SelectorEngine(data_loader=data_loader)
+    logger.info(f"开始回测: {start_date} -> {end_date}")
     
-    # 运行回测
-    engine = BacktestEngine(
-        selector=selector,
-        initial_capital=initial_capital
+    runner = StrategyRunner(
+        initial_capital=capital or settings.initial_capital,
+        train_start=start_date,
+        train_end=end_date
     )
     
-    result = engine.run(start_date, end_date)
+    results = runner.run_full_pipeline()
     
-    # 计算指标
-    if 'history' in result and not result['history'].empty:
-        history = result['history']
-        returns = history['profit_pct'].diff() / 100
-        metrics_calc = PerformanceMetrics(returns)
-        metrics = metrics_calc.get_all_metrics(result.get('trades'))
-        result['metrics'] = metrics
-        
-        # 打印结果
-        logger.info("="*50)
-        logger.info("回测结果")
-        logger.info("="*50)
-        logger.info(f"总收益率: {result['total_return']:.2%}")
-        logger.info(f"夏普比率: {metrics.get('sharpe_ratio', 0):.2f}")
-        logger.info(f"最大回撤: {metrics.get('max_drawdown', 0):.2%}")
-        logger.info(f"胜率: {metrics.get('win_rate', 0):.2%}")
-        logger.info("="*50)
+    logger.info("回测完成")
+    return results
+
+
+def run_optimization():
+    """运行参数优化"""
+    from optimize.param_optimizer import run_optimization
     
-    return result
+    logger.info("开始参数优化")
+    return run_optimization()
+
+
+def run_integration_test():
+    """运行集成测试"""
+    from tests.integration_test import run_all_tests
+    
+    logger.info("运行集成测试")
+    return run_all_tests()
 
 
 def main():
     """主函数"""
     parser = argparse.ArgumentParser(description='波段抄底策略')
-    parser.add_argument('--mode', choices=['backtest', 'select'], default='backtest')
-    parser.add_argument('--start', default='2020-01-01')
-    parser.add_argument('--end', default='2025-12-31')
-    parser.add_argument('--capital', type=float, default=1000000)
+    parser.add_argument('--mode', 
+                        choices=['backtest', 'optimize', 'test'], 
+                        default='backtest',
+                        help='运行模式: backtest(回测) / optimize(优化) / test(测试)')
+    parser.add_argument('--start', 
+                        default=settings.backtest_start,
+                        help='开始日期 (YYYY-MM-DD)')
+    parser.add_argument('--end', 
+                        default=settings.backtest_end,
+                        help='结束日期 (YYYY-MM-DD)')
+    parser.add_argument('--capital', 
+                        type=float,
+                        default=None,
+                        help='初始资金')
     
     args = parser.parse_args()
     
     if args.mode == 'backtest':
         run_backtest(args.start, args.end, args.capital)
+    elif args.mode == 'optimize':
+        run_optimization()
+    elif args.mode == 'test':
+        run_integration_test()
 
 
 if __name__ == '__main__':

@@ -6,15 +6,16 @@ from typing import Optional, Dict, List
 import pandas as pd
 import os
 from datetime import datetime
-import logging
 
-logger = logging.getLogger('data_cache')
+from ..utils.logger import get_logger
+
+logger = get_logger('data_cache')
 
 
 class DataCache:
     """数据缓存管理
     
-    使用Parquet格式存储数据，支持高效读写
+    使用Parquet格式存储数据，支持高效读?
     """
     
     def __init__(self, cache_dir: Path = None):
