@@ -3,6 +3,7 @@
 
 from typing import Dict
 import pandas as pd
+import numpy as np
 
 from utils.logger import get_logger
 
@@ -10,37 +11,43 @@ logger = get_logger('benchmark')
 
 
 class Benchmark:
-    """基准对比（沪深300）"""
+    """基准对比（沪深300等）"""
     
     def __init__(self, benchmark_code: str = "000300"):
-        self.code = benchmark_code
+        self.benchmark_code = benchmark_code
         self.data: pd.DataFrame = None
     
     def load_data(self, start_date: str, end_date: str):
+        """加载基准数据"""
         try:
             import akshare as ak
-            df = ak.stock_zh_index_daily(symbol=f"sh{self.code}")
+            # 沪深300指数
+            df = ak.stock_zh_index_daily(symbol=f"sh{self.benchmark_code}")
             df = df[(df['date'] >= start_date) & (df['date'] <= end_date)]
-            df['return'] = df['close'].pct_change()
             self.data = df
-            logger.info(f"加载基准数据: {len(df)}条")
+            logger.info(f"基准数据加载: {len(df)}条")
         except Exception as e:
-            logger.warning(f"加载基准失败: {e}")
+            logger.warning(f"基准数据加载失败: {e}")
     
     def get_returns(self) -> pd.Series:
-        if self.data is not None and 'return' in self.data.columns:
-            return self.data['return']
-        return pd.Series()
+        """获取收益率"""
+        if self.data is None or self.data.empty:
+            return pd.Series()
+        return self.data['close'].pct_change()
     
     def compare(self, strategy_returns: pd.Series) -> Dict:
-        if self.data is None:
+        """对比策略与基准"""
+        benchmark_returns = self.get_returns()
+        
+        if benchmark_returns.empty:
             return {}
         
-        bench_return = (1 + self.data['return'].dropna()).prod() - 1
-        strat_return = (1 + strategy_returns.dropna()).prod() - 1
+        # 对齐日期
+        strategy_cum = (1 + strategy_returns.fillna(0)).cumprod()
+        benchmark_cum = (1 + benchmark_returns.fillna(0)).cumprod()
         
         return {
-            'benchmark_return': bench_return,
-            'strategy_return': strat_return,
-            'excess_return': strat_return - bench_return
+            'strategy_return': strategy_cum.iloc[-1] - 1 if len(strategy_cum) > 0 else 0,
+            'benchmark_return': benchmark_cum.iloc[-1] - 1 if len(benchmark_cum) > 0 else 0,
+            'excess_return': (strategy_cum.iloc[-1] - 1) - (benchmark_cum.iloc[-1] - 1) if len(strategy_cum) > 0 and len(benchmark_cum) > 0 else 0
         }

@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 """组合管理"""
 
-from typing import Dict
-from dataclasses import dataclass
+from typing import Dict, List
+from dataclasses import dataclass, field
+from datetime import date
 
 
 @dataclass
 class Position:
+    """持仓"""
     ts_code: str
     shares: int
     cost_price: float
@@ -19,6 +21,12 @@ class Position:
     @property
     def profit(self) -> float:
         return (self.current_price - self.cost_price) * self.shares
+    
+    @property
+    def profit_pct(self) -> float:
+        if self.cost_price == 0:
+            return 0
+        return (self.current_price - self.cost_price) / self.cost_price
 
 
 class Portfolio:
@@ -44,6 +52,7 @@ class Portfolio:
         return self.total_profit / self.initial_capital
     
     def buy(self, ts_code: str, shares: int, price: float) -> bool:
+        """买入"""
         amount = shares * price
         if amount > self.cash:
             return False
@@ -56,12 +65,14 @@ class Portfolio:
             total_shares = pos.shares + shares
             pos.cost_price = total_cost / total_shares
             pos.shares = total_shares
+            pos.current_price = price
         else:
             self.positions[ts_code] = Position(ts_code, shares, price, price)
         
         return True
     
     def sell(self, ts_code: str, shares: int, price: float) -> bool:
+        """卖出"""
         if ts_code not in self.positions:
             return False
         
@@ -78,6 +89,15 @@ class Portfolio:
         return True
     
     def update_prices(self, prices: Dict[str, float]):
+        """更新价格"""
         for ts_code, price in prices.items():
             if ts_code in self.positions:
                 self.positions[ts_code].current_price = price
+    
+    def get_position(self, ts_code: str) -> Position:
+        """获取持仓"""
+        return self.positions.get(ts_code)
+    
+    def get_all_positions(self) -> List[Position]:
+        """获取所有持仓"""
+        return list(self.positions.values())
