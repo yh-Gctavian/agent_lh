@@ -5,7 +5,7 @@ from typing import Dict, List
 import pandas as pd
 import numpy as np
 
-from ..utils.logger import get_logger
+from utils.logger import get_logger
 
 logger = get_logger('metrics')
 
@@ -17,7 +17,7 @@ class PerformanceMetrics:
     """
     
     def __init__(self, returns: pd.Series = None, trades: List[Dict] = None):
-        """初始化
+        """初始�?
         
         Args:
             returns: 日收益率序列
@@ -33,7 +33,7 @@ class PerformanceMetrics:
         return (1 + self.returns).prod() - 1
     
     def annual_return(self) -> float:
-        """年化收益率"""
+        """年化收益�?""
         if self.returns is None or len(self.returns) == 0:
             return 0.0
         
@@ -43,7 +43,7 @@ class PerformanceMetrics:
         return (1 + total) ** (252 / days) - 1
     
     def volatility(self) -> float:
-        """年化波动率"""
+        """年化波动�?""
         if self.returns is None or len(self.returns) == 0:
             return 0.0
         return self.returns.std() * np.sqrt(252)
@@ -52,7 +52,7 @@ class PerformanceMetrics:
         """夏普比率
         
         Args:
-            risk_free_rate: 无风险利率（年化）
+            risk_free_rate: 无风险利率（年化�?
             
         Returns:
             夏普比率
@@ -68,7 +68,7 @@ class PerformanceMetrics:
         return excess_returns.mean() / excess_returns.std() * np.sqrt(252)
     
     def max_drawdown(self) -> float:
-        """最大回撤"""
+        """最大回�?""
         if self.returns is None or len(self.returns) == 0:
             return 0.0
         
@@ -86,7 +86,7 @@ class PerformanceMetrics:
         return self.annual_return() / max_dd
     
     def sortino_ratio(self, risk_free_rate: float = 0.03) -> float:
-        """索提诺比率"""
+        """索提诺比�?""
         if self.returns is None or len(self.returns) == 0:
             return 0.0
         
@@ -117,7 +117,7 @@ class PerformanceMetrics:
         return len(profitable) / len(total)
     
     def profit_loss_ratio(self) -> float:
-        """盈亏比"""
+        """盈亏�?""
         if not self.trades:
             return 0.0
         
@@ -145,7 +145,7 @@ class PerformanceMetrics:
         return np.mean(days) if days else 0
     
     def get_all_metrics(self) -> Dict:
-        """获取所有指标
+        """获取所有指�?
         
         Returns:
             指标字典
@@ -171,7 +171,7 @@ class PerformanceMetrics:
         """对比基准
         
         Args:
-            benchmark_returns: 基准收益率
+            benchmark_returns: 基准收益�?
             
         Returns:
             对比结果

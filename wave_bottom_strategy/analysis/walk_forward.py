@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 
-from ..utils.logger import get_logger
+from utils.logger import get_logger
 
 logger = get_logger('walk_forward')
 
@@ -15,13 +15,13 @@ class WalkForwardValidator:
     """Walk-Forward验证
     
     滚动窗口验证，避免过拟合
-    训练集找最优参数，测试集验证效果
+    训练集找最优参数，测试集验证效�?
     """
     
     def __init__(
         self,
-        train_window: int = 252 * 3,  # 3年训练
-        test_window: int = 252 * 1,   # 1年测试
+        train_window: int = 252 * 3,  # 3年训�?
+        test_window: int = 252 * 1,   # 1年测�?
         step: int = 63                 # 滚动步长（季度）
     ):
         self.train_window = train_window
@@ -37,16 +37,16 @@ class WalkForwardValidator:
         """生成滚动窗口
         
         Args:
-            start_date: 开始日期
+            start_date: 开始日�?
             end_date: 结束日期
-            trade_dates: 交易日列表
+            trade_dates: 交易日列�?
             
         Returns:
             窗口列表 [{'train_start', 'train_end', 'test_start', 'test_end'}, ...]
         """
         if trade_dates is None:
-            # 生成简单日期序列
-            dates = pd.date_range(start_date, end_date, freq='B')  # 工作日
+            # 生成简单日期序�?
+            dates = pd.date_range(start_date, end_date, freq='B')  # 工作�?
             trade_dates = [d.strftime('%Y-%m-%d') for d in dates]
         
         windows = []
@@ -65,7 +65,7 @@ class WalkForwardValidator:
                 'test_end': test_end
             })
         
-        logger.info(f"生成{len(windows)}个滚动窗口")
+        logger.info(f"生成{len(windows)}个滚动窗�?)
         return windows
     
     def run_validation(
@@ -81,11 +81,11 @@ class WalkForwardValidator:
         
         Args:
             optimize_func: 优化函数（训练集找最优参数）
-            validate_func: 验证函数（测试集验证效果）
+            validate_func: 验证函数（测试集验证效果�?
             param_ranges: 参数范围
-            start_date: 开始日期
+            start_date: 开始日�?
             end_date: 结束日期
-            trade_dates: 交易日列表
+            trade_dates: 交易日列�?
             
         Returns:
             验证结果
@@ -98,7 +98,7 @@ class WalkForwardValidator:
                        f"训练 {window['train_start']}~{window['train_end']}, "
                        f"测试 {window['test_start']}~{window['test_end']}")
             
-            # 1. 训练集优化
+            # 1. 训练集优�?
             optimal_params = optimize_func(
                 start_date=window['train_start'],
                 end_date=window['train_end'],
@@ -109,7 +109,7 @@ class WalkForwardValidator:
                 logger.warning(f"窗口 {window['window_id']} 优化失败")
                 continue
             
-            # 2. 测试集验证
+            # 2. 测试集验�?
             test_metrics = validate_func(
                 start_date=window['test_start'],
                 end_date=window['test_end'],
@@ -131,13 +131,13 @@ class WalkForwardValidator:
         return pd.DataFrame(results)
     
     def analyze_stability(self, wf_results: pd.DataFrame) -> Dict:
-        """分析参数稳定性
+        """分析参数稳定�?
         
         Args:
             wf_results: Walk-Forward结果
             
         Returns:
-            稳定性分析
+            稳定性分�?
         """
         if wf_results.empty:
             return {}
@@ -188,7 +188,7 @@ class WalkForwardValidator:
             "",
             f"窗口数量: {len(wf_results)}",
             "",
-            "## 各窗口表现",
+            "## 各窗口表�?,
             ""
         ]
         
@@ -206,7 +206,7 @@ class WalkForwardValidator:
                 "",
                 f"平均夏普: {stability['overall']['avg_sharpe']:.2f}",
                 f"平均收益: {stability['overall']['avg_return']:.2%}",
-                f"夏普稳定性: {stability['overall']['sharpe_stability']:.2f}",
+                f"夏普稳定�? {stability['overall']['sharpe_stability']:.2f}",
             ])
         
         lines.extend(["", "=========================================="])
@@ -219,20 +219,20 @@ def train_test_split(
     split_date: str,
     end_date: str
 ) -> tuple:
-    """训练测试集划分
+    """训练测试集划�?
     
     Args:
-        start_date: 总开始日期
+        start_date: 总开始日�?
         split_date: 划分日期
-        end_date: 总结束日期
+        end_date: 总结束日�?
         
     Returns:
-        (训练集开始, 训练集结束, 测试集开始, 测试集结束)
+        (训练集开�? 训练集结�? 测试集开�? 测试集结�?
     """
     return start_date, split_date, split_date, end_date
 
 
-# 预设划分：2020-2023训练，2024-2025测试
+# 预设划分�?020-2023训练�?024-2025测试
 DEFAULT_SPLIT = {
     'train_start': '2020-01-01',
     'train_end': '2023-12-31',

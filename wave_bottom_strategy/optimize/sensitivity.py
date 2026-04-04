@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""参数敏感性分析"""
+"""参数敏感性分�?""
 
 from typing import Dict, List, Any, Callable
 import pandas as pd
@@ -12,7 +12,7 @@ logger = get_logger('sensitivity')
 
 
 class SensitivityAnalyzer:
-    """参数敏感性分析
+    """参数敏感性分�?
     
     分析单个参数对策略绩效的影响
     """
@@ -30,11 +30,11 @@ class SensitivityAnalyzer:
         param_values: List[Any],
         base_params: Dict[str, Any]
     ) -> pd.DataFrame:
-        """单参数敏感性分析
+        """单参数敏感性分�?
         
         Args:
-            param_name: 参数名
-            param_values: 参数值列表
+            param_name: 参数�?
+            param_values: 参数值列�?
             base_params: 基础参数
             
         Returns:
@@ -66,7 +66,7 @@ class SensitivityAnalyzer:
         """多参数敏感性分析（遍历所有组合）
         
         Args:
-            param_ranges: {参数名: 参数值列表}
+            param_ranges: {参数�? 参数值列表}
             base_params: 基础参数
             
         Returns:
@@ -74,7 +74,7 @@ class SensitivityAnalyzer:
         """
         results = []
         
-        # 生成所有组合
+        # 生成所有组�?
         param_names = list(param_ranges.keys())
         param_value_lists = list(param_ranges.values())
         combinations = list(product(*param_value_lists))
@@ -107,7 +107,7 @@ class SensitivityAnalyzer:
         metric: str = 'sharpe_ratio',
         top_n: int = 10
     ) -> pd.DataFrame:
-        """找出最优参数组合
+        """找出最优参数组�?
         
         Args:
             results: 分析结果
@@ -129,8 +129,8 @@ class SensitivityAnalyzer:
         
         Args:
             results: 分析结果
-            param_name: 参数名
-            metric: 指标名
+            param_name: 参数�?
+            metric: 指标�?
         """
         try:
             import matplotlib.pyplot as plt
@@ -144,15 +144,15 @@ class SensitivityAnalyzer:
             plt.savefig(f'{param_name}_sensitivity.png')
             plt.close()
             
-            logger.info(f"敏感性分析图已保存: {param_name}_sensitivity.png")
+            logger.info(f"敏感性分析图已保�? {param_name}_sensitivity.png")
         except Exception as e:
             logger.warning(f"绘图失败: {e}")
 
 
 class GridSearchOptimizer:
-    """网格搜索优化器
+    """网格搜索优化�?
     
-    在参数空间中搜索最优组合
+    在参数空间中搜索最优组�?
     """
     
     def __init__(
@@ -180,7 +180,7 @@ class GridSearchOptimizer:
             metric: 优化指标
             
         Returns:
-            搜索结果（按指标排序）
+            搜索结果（按指标排序�?
         """
         base_params = base_params or {}
         
@@ -197,14 +197,14 @@ class GridSearchOptimizer:
         results: pd.DataFrame,
         metric: str = 'sharpe_ratio'
     ) -> Dict[str, Any]:
-        """获取最优参数
+        """获取最优参�?
         
         Args:
             results: 搜索结果
             metric: 优化指标
             
         Returns:
-            最优参数组合
+            最优参数组�?
         """
         if results.empty:
             return {}

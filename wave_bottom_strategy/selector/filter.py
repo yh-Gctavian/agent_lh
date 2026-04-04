@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""股票过滤�?""
+"""股票过滤?""
 
 from typing import List, Set
 from datetime import datetime
@@ -10,13 +10,13 @@ try:
 except ImportError:
     ak = None
 
-from wave_bottom_strategy.utils.logger import get_logger
+from ..utils.logger import get_logger
 
 logger = get_logger('stock_filter')
 
 
 class StockFilter:
-    """股票过滤�?""
+    """股票过滤?""
     
     def __init__(
         self,
@@ -39,7 +39,7 @@ class StockFilter:
             try:
                 df = ak.stock_zh_a_st_em()
                 self._st_stocks = set(df['代码'].tolist())
-                logger.info(f"ST股票: {len(self._st_stocks)}�?)
+                logger.info(f"ST股票: {len(self._st_stocks)}?)
             except Exception as e:
                 logger.warning(f"加载ST失败: {e}")
         return self._st_stocks
@@ -50,13 +50,13 @@ class StockFilter:
             try:
                 df = ak.stock_tfp_em()
                 self._suspended_stocks = set(df['代码'].tolist())
-                logger.info(f"停牌股票: {len(self._suspended_stocks)}�?)
+                logger.info(f"停牌股票: {len(self._suspended_stocks)}?)
             except Exception as e:
                 logger.warning(f"加载停牌失败: {e}")
         return self._suspended_stocks
     
     def filter(self, stock_pool: List[str]) -> List[str]:
-        """过滤股票�?""
+        """过滤股票?""
         result = set(stock_pool)
         
         if self.exclude_st:
@@ -65,5 +65,5 @@ class StockFilter:
         if self.exclude_suspended:
             result -= self.load_suspended_stocks()
         
-        logger.info(f"过滤: {len(stock_pool)} -> {len(result)}�?)
+        logger.info(f"过滤: {len(stock_pool)} -> {len(result)}?)
         return list(result)

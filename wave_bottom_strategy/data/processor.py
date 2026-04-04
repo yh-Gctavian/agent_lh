@@ -5,7 +5,7 @@ from typing import Optional, List, Set
 import pandas as pd
 from pathlib import Path
 
-from ..utils.logger import get_logger
+from utils.logger import get_logger
 
 logger = get_logger('data_processor')
 
@@ -170,7 +170,7 @@ class DataProcessor:
         symbol: str,
         name: str = None
     ) -> pd.DataFrame:
-        """标记ST状?
+        """标记ST�?
         
         Args:
             df: 日K线数?
@@ -203,7 +203,7 @@ class DataProcessor:
         # 删除缺失?
         df = df.dropna(subset=['open', 'high', 'low', 'close', 'volume'])
         
-        # 检查异常?
+        # 检查异�?
         df = df[df['high'] >= df['low']]  # 最高价>=最低价
         df = df[df['high'] >= df['open']]  # 最高价>=开盘价
         df = df[df['high'] >= df['close']]  # 最高价>=收盘?

@@ -8,13 +8,13 @@ from enum import Enum
 import pandas as pd
 
 from data.loader import DataLoader
-from ..utils.logger import get_logger
+from utils.logger import get_logger
 
 logger = get_logger('order_matcher')
 
 
 class OrderStatus(Enum):
-    """订单状?""
+    """订单�?""
     PENDING = 'pending'  # 待成?
     FILLED = 'filled'  # 已成?
     CANCELLED = 'cancelled'  # 已取消（停牌等）
@@ -180,7 +180,7 @@ class OrderMatcher:
             else:
                 actual_price = fill_price * (1 - self.slippage)
             
-            # 更新订单状?
+            # 更新订单�?
             order.status = OrderStatus.FILLED
             order.fill_date = trade_date
             order.fill_price = actual_price
