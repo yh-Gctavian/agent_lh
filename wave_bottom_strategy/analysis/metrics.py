@@ -16,12 +16,9 @@ class PerformanceMetrics:
     计算胜率、盈亏比、夏普比率等核心指标
     """
     
-    def __init__(self, returns: pd.Series = None):
+    def __init__(self, returns: pd.Series = None, trades: pd.DataFrame = None):
         self.returns = returns
-    
-    def set_returns(self, returns: pd.Series):
-        """设置收益率序列"""
-        self.returns = returns
+        self.trades = trades
     
     def win_rate(self) -> float:
         """计算胜率
@@ -29,15 +26,22 @@ class PerformanceMetrics:
         Returns:
             胜率（盈利交易占比）
         """
-        if self.returns is None or len(self.returns) == 0:
+        if self.trades is None or self.trades.empty:
             return 0.0
         
-        trades = self.returns[self.returns != 0]
-        if len(trades) == 0:
+        # 从交易记录计算
+        if 'profit' in self.trades.columns:
+            winning = len(self.trades[self.trades['profit'] > 0])
+            total = len(self.trades[self.trades['profit'] != 0])
+        elif 'return' in self.trades.columns:
+            winning = len(self.trades[self.trades['return'] > 0])
+            total = len(self.trades[self.trades['return'] != 0])
+        else:
             return 0.0
         
-        winning = len(trades[trades > 0])
-        return winning / len(trades)
+        if total == 0:
+            return 0.0
+        return winning / total
     
     def profit_loss_ratio(self) -> float:
         """计算盈亏比
@@ -45,11 +49,13 @@ class PerformanceMetrics:
         Returns:
             平均盈利 / 平均亏损
         """
-        if self.returns is None or len(self.returns) == 0:
+        if self.trades is None or self.trades.empty:
             return 0.0
         
-        winning = self.returns[self.returns > 0]
-        losing = self.returns[self.returns < 0]
+        profit_col = 'profit' if 'profit' in self.trades.columns else 'return'
+        
+        winning = self.trades[self.trades[profit_col] > 0][profit_col]
+        losing = self.trades[self.trades[profit_col] < 0][profit_col]
         
         avg_win = winning.mean() if len(winning) > 0 else 0
         avg_loss = abs(losing.mean()) if len(losing) > 0 else 0
@@ -71,16 +77,15 @@ class PerformanceMetrics:
             return 0.0
         
         excess_returns = self.returns - risk_free_rate / 252
-        std = excess_returns.std()
-        if std == 0:
+        if excess_returns.std() == 0:
             return 0.0
-        return excess_returns.mean() / std * np.sqrt(252)
+        return excess_returns.mean() / excess_returns.std() * np.sqrt(252)
     
     def max_drawdown(self) -> float:
         """计算最大回撤
         
         Returns:
-            最大回撤比例（负数）
+            最大回撤比例（正值）
         """
         if self.returns is None or len(self.returns) == 0:
             return 0.0
@@ -88,7 +93,7 @@ class PerformanceMetrics:
         cumulative = (1 + self.returns).cumprod()
         peak = cumulative.expanding(min_periods=1).max()
         drawdown = (cumulative - peak) / peak
-        return drawdown.min()
+        return abs(drawdown.min())
     
     def annual_return(self) -> float:
         """计算年化收益率
@@ -119,12 +124,36 @@ class PerformanceMetrics:
         """计算卡玛比率
         
         Returns:
-            年化收益 / 最大回撤绝对值
+            年化收益 / 最大回撤
         """
-        mdd = abs(self.max_drawdown())
-        if mdd == 0:
+        dd = self.max_drawdown()
+        if dd == 0:
             return 0.0
-        return self.annual_return() / mdd
+        return self.annual_return() / dd
+    
+    def sortino_ratio(self, risk_free_rate: float = 0.03) -> float:
+        """计算索提诺比率
+        
+        Args:
+            risk_free_rate: 无风险利率
+            
+        Returns:
+            索提诺比率
+        """
+        if self.returns is None or len(self.returns) == 0:
+            return 0.0
+        
+        excess_returns = self.returns - risk_free_rate / 252
+        downside_returns = excess_returns[excess_returns < 0]
+        
+        if len(downside_returns) == 0:
+            return float('inf')
+        
+        downside_std = downside_returns.std()
+        if downside_std == 0:
+            return 0.0
+        
+        return excess_returns.mean() / downside_std * np.sqrt(252)
     
     def get_all_metrics(self) -> Dict:
         """获取所有指标
@@ -133,50 +162,22 @@ class PerformanceMetrics:
             指标字典
         """
         return {
-            'win_rate': round(self.win_rate() * 100, 2),
-            'profit_loss_ratio': round(self.profit_loss_ratio(), 2),
-            'sharpe_ratio': round(self.sharpe_ratio(), 2),
-            'max_drawdown': round(self.max_drawdown() * 100, 2),
-            'annual_return': round(self.annual_return() * 100, 2),
-            'volatility': round(self.volatility() * 100, 2),
-            'calmar_ratio': round(self.calmar_ratio(), 2),
+            'win_rate': self.win_rate(),
+            'profit_loss_ratio': self.profit_loss_ratio(),
+            'sharpe_ratio': self.sharpe_ratio(),
+            'max_drawdown': self.max_drawdown(),
+            'annual_return': self.annual_return(),
+            'volatility': self.volatility(),
+            'calmar_ratio': self.calmar_ratio(),
+            'sortino_ratio': self.sortino_ratio(),
         }
     
-    def calculate_from_trades(self, trades: pd.DataFrame) -> Dict:
-        """从交易记录计算指标
-        
-        Args:
-            trades: 交易记录DataFrame
-            
-        Returns:
-            指标字典
-        """
-        if trades.empty:
-            return self.get_all_metrics()
-        
-        # 计算每笔交易收益
-        if 'profit' in trades.columns:
-            self.returns = trades['profit'] / trades['cost']
-        elif 'return' in trades.columns:
-            self.returns = trades['return']
-        
-        return self.get_all_metrics()
-    
-    def calculate_from_daily(self, daily_values: pd.DataFrame) -> Dict:
-        """从每日净值计算指标
-        
-        Args:
-            daily_values: 每日净值DataFrame
-            
-        Returns:
-            指标字典
-        """
-        if daily_values.empty:
-            return self.get_all_metrics()
-        
-        if 'value' in daily_values.columns:
-            self.returns = daily_values['value'].pct_change()
-        elif 'return' in daily_values.columns:
-            self.returns = daily_values['return']
-        
-        return self.get_all_metrics()
+    def print_summary(self):
+        """打印摘要"""
+        metrics = self.get_all_metrics()
+        print("\n" + "="*50)
+        print("绩效指标汇总")
+        print("="*50)
+        for key, value in metrics.items():
+            print(f"{key:20s}: {value:.4f}")
+        print("="*50)
