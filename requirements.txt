@@ -1,0 +1,22 @@
+﻿# 波段抄底策略依赖
+
+# 核心依赖
+pandas>=1.5.0
+numpy>=1.21.0
+
+# 技术指标
+talib>=0.4.28
+
+# 数据源（可选）
+tushare>=1.2.0
+akshare>=1.10.0
+
+# 可视化
+matplotlib>=3.5.0
+plotly>=5.10.0
+
+# 存储
+pyarrow>=8.0.0  # Parquet支持
+
+# 测试
+pytest>=7.0.0
