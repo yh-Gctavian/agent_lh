@@ -2,7 +2,7 @@
 """联调测试脚本"""
 
 from wave_bottom_strategy.main import run_backtest, run_parameter_optimization, generate_final_report
-from utils.logger import get_logger
+from wave_bottom_strategy.utils.logger import get_logger
 
 logger = get_logger('integration_test')
 

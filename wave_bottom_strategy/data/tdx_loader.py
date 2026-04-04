@@ -1,36 +1,56 @@
 # -*- coding: utf-8 -*-
-"""TDX Data Loader - Read data from TongDaXin locally"""
+"""通达信本地数据读取器 - pytdx实现"""
 
-from typing import List, Optional
+from typing import Optional, List, Dict
 from pathlib import Path
+from datetime import datetime
 import pandas as pd
-import logging
+import numpy as np
+import struct
+import os
 
-logger = logging.getLogger('tdx_loader')
+from wave_bottom_strategy.utils.logger import get_logger
+
+logger = get_logger('tdx_loader')
 
 
-class TdxDataLoader:
-    """TongDaXin data loader - Read local TDX data without network"""
+class TdxLocalLoader:
+    """通达信本地数据读取器
+    
+    读取 vipdoc 目录下的 .day 文件（日K线数据）
+    数据格式：每条记录32字节
+    - 日期(4字节) + 开盘(4字节) + 最高(4字节) + 最低(4字节) + 收盘(4字节) + 成交额(4字节) + 成交量(4字节) + 保留(4字节)
+    """
+    
+    # 通达信数据路径
+    TDX_ROOT: Path = Path(r"E:\new_tdx")
+    VIPDOC_DIR: Path = TDX_ROOT / "vipdoc"
+    
+    # 市场代码映射
+    MARKET_MAP = {
+        'sh': {'code': 1, 'suffix': '.SH', 'lday': 'sh/lday'},  # 上海
+        'sz': {'code': 0, 'suffix': '.SZ', 'lday': 'sz/lday'},  # 深圳
+        'bj': {'code': 0, 'suffix': '.BJ', 'lday': 'bj/lday'},  # 北交所
+    }
+    
+    # 通达信每条记录32字节
+    DAY_RECORD_SIZE = 32
     
     def __init__(self, tdx_path: str = None):
-        """Initialize TDX loader
+        """初始化
         
         Args:
-            tdx_path: TDX installation path, e.g. 'C:/new_tdx'
+            tdx_path: 通达信根目录，默认 E:\\new_tdx
         """
-        self.tdx_path = Path(tdx_path) if tdx_path else Path('C:/new_tdx')
-        self._api = None
-    
-    def _get_api(self):
-        """Get or create TDX API connection"""
-        if self._api is None:
-            try:
-                from pytdx.hq import TdxHq_API
-                self._api = TdxHq_API()
-            except ImportError:
-                logger.warning("pytdx not installed. Run: pip install pytdx")
-                return None
-        return self._api
+        if tdx_path:
+            self.TDX_ROOT = Path(tdx_path)
+            self.VIPDOC_DIR = self.TDX_ROOT / "vipdoc"
+        
+        # 验证路径
+        if not self.VIPDOC_DIR.exists():
+            logger.warning(f"通达信路径不存在: {self.VIPDOC_DIR}")
+        
+        logger.info(f"通达信数据路径: {self.VIPDOC_DIR}")
     
     def load_daily_data(
         self,
@@ -38,180 +58,367 @@ class TdxDataLoader:
         start_date: str = None,
         end_date: str = None
     ) -> pd.DataFrame:
-        """Load daily K-line data from TDX
+        """加载日K线数据
         
         Args:
-            symbol: Stock code, e.g. '000001'
-            start_date: Start date (YYYY-MM-DD)
-            end_date: End date (YYYY-MM-DD)
+            symbol: 股票代码（6位数字，如 '000001'）
+            start_date: 开始日期（格式：YYYYMMDD 或 YYYY-MM-DD）
+            end_date: 结束日期
             
         Returns:
-            DataFrame with OHLCV data
+            日K线DataFrame
         """
-        api = self._get_api()
-        if api is None:
+        # 确定市场
+        market, ts_code = self._detect_market(symbol)
+        
+        # 构建文件路径
+        file_path = self._get_day_file_path(market, symbol)
+        
+        if not file_path.exists():
+            logger.warning(f"通达信数据文件不存在: {file_path}")
             return pd.DataFrame()
         
-        # Determine market: 0=SZ, 1=SH
-        market = 0 if symbol.startswith(('0', '3')) else 1
+        # 读取数据
+        df = self._read_day_file(file_path)
         
-        try:
-            # Connect to TDX server (use any available server)
-            # Or use local file reading
-            data = self._read_local_tdx(symbol, market)
-            
-            if data.empty:
-                logger.warning("No data found for %s" % symbol)
-                return pd.DataFrame()
-            
-            # Filter by date range
-            if start_date:
-                data = data[data['trade_date'] >= start_date]
-            if end_date:
-                data = data[data['trade_date'] <= end_date]
-            
-            return data
-            
-        except Exception as e:
-            logger.error("Failed to load data for %s: %s" % (symbol, e))
-            return pd.DataFrame()
-    
-    def _read_local_tdx(self, symbol: str, market: int) -> pd.DataFrame:
-        """Read TDX local .day file
+        if df.empty:
+            return df
         
-        Args:
-            symbol: Stock code
-            market: 0=SZ, 1=SH
-            
-        Returns:
-            DataFrame with OHLCV data
-        """
-        import struct
+        # 添加 ts_code
+        df['ts_code'] = ts_code
         
-        # TDX day file path
-        market_dir = 'sz' if market == 0 else 'sh'
-        day_file = self.tdx_path / 'vipdoc' / market_dir / 'lday' / ('%s.day' % symbol)
+        # 日期过滤
+        if start_date:
+            start_date = self._normalize_date(start_date)
+            df = df[df['trade_date'] >= start_date]
         
-        if not day_file.exists():
-            logger.warning("TDX day file not found: %s" % day_file)
-            return pd.DataFrame()
+        if end_date:
+            end_date = self._normalize_date(end_date)
+            df = df[df['trade_date'] <= end_date]
         
-        data = []
-        with open(day_file, 'rb') as f:
-            while True:
-                chunk = f.read(32)
-                if not chunk or len(chunk) < 32:
-                    break
-                
-                # Parse 32-byte record
-                # Format: date(4), open(4), high(4), low(4), close(4), amount(4), volume(4)
-                values = struct.unpack('IIIIIII', chunk)
-                
-                date_int = values[0]
-                year = date_int // 10000
-                month = (date_int % 10000) // 100
-                day = date_int % 100
-                
-                data.append({
-                    'trade_date': '%04d-%02d-%02d' % (year, month, day),
-                    'open': values[1] / 100.0,
-                    'high': values[2] / 100.0,
-                    'low': values[3] / 100.0,
-                    'close': values[4] / 100.0,
-                    'amount': values[5],
-                    'volume': values[6]
-                })
+        logger.info(f"加载通达信数据: {symbol}, {len(df)}条")
         
-        df = pd.DataFrame(data)
-        df['trade_date'] = pd.to_datetime(df['trade_date'])
-        df['ts_code'] = '%s.%s' % (symbol, 'SZ' if market == 0 else 'SH')
-        
-        logger.info("Loaded %d records from TDX for %s" % (len(df), symbol))
         return df
     
     def load_stock_pool(self, pool_name: str) -> List[str]:
-        """Load stock pool from TDX
+        """加载股票池
         
         Args:
-            pool_name: Pool name (hs300, zz500, all_a)
+            pool_name: 股票池名称
             
         Returns:
-            List of stock codes
+            股票代码列表
         """
-        # Read from TDX block files
-        block_file = self.tdx_path / 'T0002' / 'hq_cache' / ('%s.txt' % pool_name)
-        
-        if block_file.exists():
-            with open(block_file, 'r', encoding='gbk') as f:
-                codes = [line.strip() for line in f if line.strip()]
-            return codes
-        
-        logger.warning("Block file not found: %s" % block_file)
-        return []
+        if pool_name == 'all_sh':
+            return self._list_stocks('sh')
+        elif pool_name == 'all_sz':
+            return self._list_stocks('sz')
+        elif pool_name == 'all_a':
+            sh = self._list_stocks('sh')
+            sz = self._list_stocks('sz')
+            return sh + sz
+        else:
+            logger.warning(f"不支持的股票池: {pool_name}")
+            return []
     
-    def get_realtime_quotes(self, symbols: List[str]) -> pd.DataFrame:
-        """Get realtime quotes (requires network)
+    def _detect_market(self, symbol: str) -> tuple:
+        """判断股票市场
         
         Args:
-            symbols: List of stock codes
+            symbol: 6位股票代码
             
         Returns:
-            DataFrame with realtime data
+            (市场代码, ts_code)
         """
-        api = self._get_api()
-        if api is None:
+        # 上海市场：6开头（主板）、60开头（主板）、68开头（科创板）
+        if symbol.startswith('6'):
+            return 'sh', f"{symbol}.SH"
+        
+        # 深圳市场：00开头（主板）、30开头（创业板）
+        elif symbol.startswith(('0', '3')):
+            return 'sz', f"{symbol}.SZ"
+        
+        # 北交所：8开头、4开头
+        elif symbol.startswith(('8', '4')):
+            return 'bj', f"{symbol}.BJ"
+        
+        # 默认深圳
+        else:
+            return 'sz', f"{symbol}.SZ"
+    
+    def _get_day_file_path(self, market: str, symbol: str) -> Path:
+        """获取日K线文件路径
+        
+        Args:
+            market: 市场代码（sh/sz/bj）
+            symbol: 股票代码
+            
+        Returns:
+            文件路径
+        """
+        market_info = self.MARKET_MAP.get(market, self.MARKET_MAP['sz'])
+        lday_dir = self.VIPDOC_DIR / market_info['lday']
+        
+        # 文件名格式：sh600000.day 或 sz000001.day
+        file_name = f"{market}{symbol}.day"
+        
+        return lday_dir / file_name
+    
+    def _read_day_file(self, file_path: Path) -> pd.DataFrame:
+        """读取 .day 文件
+        
+        通达信日线文件格式（每条记录32字节）：
+        - 日期：4字节整数（YYYYMMDD）
+        - 开盘：4字节整数（实际价格 * 100）
+        - 最高：4字节整数
+        - 最低：4字节整数
+        - 收盘：4字节整数
+        - 成交额：4字节浮点数
+        - 成交量：4字节整数
+        - 保留：4字节
+        
+        Args:
+            file_path: .day 文件路径
+            
+        Returns:
+            DataFrame
+        """
+        try:
+            with open(file_path, 'rb') as f:
+                data = f.read()
+            
+            if len(data) == 0:
+                return pd.DataFrame()
+            
+            # 每条记录32字节
+            record_count = len(data) // self.DAY_RECORD_SIZE
+            
+            # 解析数据
+            records = []
+            for i in range(record_count):
+                offset = i * self.DAY_RECORD_SIZE
+                record_data = data[offset:offset + self.DAY_RECORD_SIZE]
+                
+                # 解析字段
+                # struct格式：I(日期) IIII(开高低收) f(成交额) I(成交量) I(保留)
+                unpacked = struct.unpack('IIIIIIfII', record_data)
+                
+                date_int = unpacked[0]
+                open_price = unpacked[1] / 100.0  # 价格需要除以100
+                high_price = unpacked[2] / 100.0
+                low_price = unpacked[3] / 100.0
+                close_price = unpacked[4] / 100.0
+                amount = unpacked[5]  # 成交额（元）
+                volume = unpacked[6]  # 成交量（手）
+                
+                # 转换日期
+                trade_date = str(date_int)
+                
+                records.append({
+                    'trade_date': trade_date,
+                    'open': open_price,
+                    'high': high_price,
+                    'low': low_price,
+                    'close': close_price,
+                    'volume': volume,
+                    'amount': amount
+                })
+            
+            df = pd.DataFrame(records)
+            
+            # 添加常用字段
+            df['turn'] = 0  # 通达信本地数据无换手率
+            df['is_suspended'] = False
+            
+            return df
+            
+        except Exception as e:
+            logger.error(f"读取 .day 文件失败: {file_path}, {e}")
+            return pd.DataFrame()
+    
+    def _list_stocks(self, market: str) -> List[str]:
+        """列出市场所有股票
+        
+        Args:
+            market: 市场代码
+            
+        Returns:
+            股票代码列表
+        """
+        market_info = self.MARKET_MAP.get(market, self.MARKET_MAP['sz'])
+        lday_dir = self.VIPDOC_DIR / market_info['lday']
+        
+        if not lday_dir.exists():
+            logger.warning(f"目录不存在: {lday_dir}")
+            return []
+        
+        stocks = []
+        for file in lday_dir.glob(f"{market}*.day"):
+            # 文件名如 sh600000.day，提取 600000
+            code = file.stem[2:]  # 去掉市场前缀
+            if len(code) == 6 and code.isdigit():
+                stocks.append(code)
+        
+        logger.info(f"{market}市场股票数: {len(stocks)}")
+        return stocks
+    
+    def _normalize_date(self, date_str: str) -> str:
+        """标准化日期格式
+        
+        Args:
+            date_str: 日期字符串
+            
+        Returns:
+            YYYYMMDD 格式
+        """
+        if '-' in date_str:
+            return date_str.replace('-', '')
+        return date_str
+    
+    def get_data_coverage(self, symbol: str) -> Dict:
+        """获取数据覆盖范围
+        
+        Args:
+            symbol: 股票代码
+            
+        Returns:
+            数据范围信息
+        """
+        df = self.load_daily_data(symbol)
+        
+        if df.empty:
+            return {'has_data': False}
+        
+        return {
+            'has_data': True,
+            'start_date': df['trade_date'].min(),
+            'end_date': df['trade_date'].max(),
+            'record_count': len(df)
+        }
+    
+    def check_data_availability(self, symbol: str, date: str) -> bool:
+        """检查指定日期是否有数据
+        
+        Args:
+            symbol: 股票代码
+            date: 日期
+            
+        Returns:
+            是否有数据
+        """
+        df = self.load_daily_data(symbol, date, date)
+        return not df.empty
+
+
+class TdxOnlineLoader:
+    """通达信在线数据读取器（通过 pytdx 标准接口）
+    
+    使用 pytdx 的标准接口连接通达信服务器获取数据
+    可作为本地数据的补充
+    """
+    
+    def __init__(self, host: str = '119.147.212.81', port: int = 7709):
+        """初始化
+        
+        Args:
+            host: 通达信服务器地址
+            port: 端口
+        """
+        self.host = host
+        self.port = port
+        self.api = None
+    
+    def connect(self):
+        """连接服务器"""
+        try:
+            from pytdx.hq import TdxHq_API
+            
+            self.api = TdxHq_API()
+            self.api.connect(self.host, self.port)
+            logger.info(f"连接通达信服务器: {self.host}:{self.port}")
+            return True
+        except Exception as e:
+            logger.error(f"连接失败: {e}")
+            return False
+    
+    def disconnect(self):
+        """断开连接"""
+        if self.api:
+            self.api.disconnect()
+    
+    def get_security_list(self, market: int, start: int = 0) -> List:
+        """获取股票列表
+        
+        Args:
+            market: 市场（0=深圳, 1=上海）
+            start: 起始位置
+            
+        Returns:
+            股票列表
+        """
+        if not self.api:
+            return []
+        
+        try:
+            data = self.api.get_security_list(market, start)
+            return data if data else []
+        except Exception as e:
+            logger.error(f"获取股票列表失败: {e}")
+            return []
+    
+    def get_security_bars(self, market: int, code: str, start: int = 0, count: int = 800) -> pd.DataFrame:
+        """获取K线数据
+        
+        Args:
+            market: 市场（0=深圳, 1=上海）
+            code: 股票代码
+            start: 起始位置
+            count: 数量
+            
+        Returns:
+            K线DataFrame
+        """
+        if not self.api:
             return pd.DataFrame()
         
         try:
-            # Connect to TDX server
-            # Use standard TDX server
-            if not api.connect('119.147.212.81', 7709):
-                logger.error("Failed to connect to TDX server")
+            data = self.api.get_security_bars(9, market, code, start, count)  # 9=日K
+            
+            if not data:
                 return pd.DataFrame()
             
-            data = []
-            for symbol in symbols:
-                market = 0 if symbol.startswith(('0', '3')) else 1
-                quotes = api.get_security_quotes([(market, symbol)])
-                if quotes:
-                    data.extend(quotes)
+            df = pd.DataFrame(data)
             
-            api.disconnect()
-            return pd.DataFrame(data)
+            # 标准化字段
+            df['trade_date'] = df['datetime'].apply(lambda x: x.split(' ')[0].replace('-', '').replace('/', ''))
+            df = df.rename(columns={
+                'open': 'open',
+                'high': 'high',
+                'low': 'low',
+                'close': 'close',
+                'vol': 'volume',
+                'amount': 'amount'
+            })
+            
+            return df
             
         except Exception as e:
-            logger.error("Failed to get realtime quotes: %s" % e)
+            logger.error(f"获取K线失败: {code}, {e}")
             return pd.DataFrame()
 
 
-# Fallback to AKShare if TDX not available
-class HybridDataLoader:
-    """Hybrid loader - Try TDX first, fallback to AKShare"""
+# 工厂函数
+def create_tdx_loader(local: bool = True, tdx_path: str = None) -> TdxLocalLoader:
+    """创建通达信数据加载器
     
-    def __init__(self, tdx_path: str = None):
-        self.tdx_loader = TdxDataLoader(tdx_path)
-        self._akshare_loader = None
-    
-    def _get_akshare_loader(self):
-        """Get AKShare loader as fallback"""
-        if self._akshare_loader is None:
-            from data.loader import DataLoader
-            self._akshare_loader = DataLoader()
-        return self._akshare_loader
-    
-    def load_daily_data(self, symbol: str, start_date: str = None, end_date: str = None) -> pd.DataFrame:
-        """Load data - Try TDX first, then AKShare"""
-        # Try TDX first
-        data = self.tdx_loader.load_daily_data(symbol, start_date, end_date)
+    Args:
+        local: 是否使用本地数据
+        tdx_path: 通达信路径
         
-        if not data.empty:
-            return data
-        
-        # Fallback to AKShare
-        logger.info("TDX data not available, using AKShare for %s" % symbol)
-        akshare = self._get_akshare_loader()
-        
-        start = start_date.replace('-', '') if start_date else '20200101'
-        end = end_date.replace('-', '') if end_date else '20251231'
-        
-        return akshare.load_daily_data(symbol, start, end)
+    Returns:
+        数据加载器实例
+    """
+    if local:
+        return TdxLocalLoader(tdx_path)
+    else:
+        return TdxOnlineLoader()

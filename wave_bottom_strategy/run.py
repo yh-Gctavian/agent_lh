@@ -9,14 +9,14 @@ import pandas as pd
 # 添加项目路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from data.loader import DataLoader
+from wave_bottom_strategy.data.loader import DataLoader
 from data.processor import DataProcessor
-from selector.engine import SelectorEngine
-from backtest.engine import BacktestEngine
-from analysis.metrics import PerformanceMetrics
-from analysis.reporter import ReportGenerator
+from wave_bottom_strategy.selector.engine import SelectorEngine
+from wave_bottom_strategy.backtest.engine import BacktestEngine
+from wave_bottom_strategy.analysis.metrics import PerformanceMetrics
+from wave_bottom_strategy.analysis.reporter import ReportGenerator
 from optimize.param_optimizer import ParamOptimizer
-from utils.logger import get_logger
+from wave_bottom_strategy.utils.logger import get_logger
 
 logger = get_logger('main_runner')
 

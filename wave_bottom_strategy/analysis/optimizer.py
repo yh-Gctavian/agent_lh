@@ -9,7 +9,7 @@ from pathlib import Path
 from .sensitivity import SensitivityAnalysis, default_param_ranges
 from .walk_forward import WalkForwardValidator, DEFAULT_SPLIT
 from .metrics import PerformanceMetrics
-from utils.logger import get_logger
+from wave_bottom_strategy.utils.logger import get_logger
 
 logger = get_logger('parameter_optimizer')
 

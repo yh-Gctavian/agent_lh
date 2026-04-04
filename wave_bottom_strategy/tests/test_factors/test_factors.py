@@ -5,12 +5,12 @@ import pytest
 import pandas as pd
 import numpy as np
 
-from factors.kdj import KDJFactor
-from factors.ma import MAFactor
-from factors.volume import VolumeFactor
-from factors.rsi import RSIFactor
-from factors.macd import MACDFactor
-from factors.bollinger import BollingerFactor
+from wave_bottom_strategy.factors.kdj import KDJFactor
+from wave_bottom_strategy.factors.ma import MAFactor
+from wave_bottom_strategy.factors.volume import VolumeFactor
+from wave_bottom_strategy.factors.rsi import RSIFactor
+from wave_bottom_strategy.factors.macd import MACDFactor
+from wave_bottom_strategy.factors.bollinger import BollingerFactor
 
 
 class TestKDJFactor:

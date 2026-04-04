@@ -7,10 +7,10 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
-from backtest.engine import BacktestEngine
-from selector.engine import SelectorEngine
-from data.loader import DataLoader
-from utils.logger import get_logger
+from wave_bottom_strategy.backtest.engine import BacktestEngine
+from wave_bottom_strategy.selector.engine import SelectorEngine
+from wave_bottom_strategy.data.loader import DataLoader
+from wave_bottom_strategy.utils.logger import get_logger
 
 logger = get_logger('param_optimizer')
 

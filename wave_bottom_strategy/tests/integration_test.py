@@ -8,19 +8,19 @@ from datetime import date, datetime
 # 添加项目路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from data.loader import DataLoader
+from wave_bottom_strategy.data.loader import DataLoader
 from data.processor import DataProcessor
-from factors.kdj import KDJFactor
-from factors.ma import MAFactor
-from factors.volume import VolumeFactor
-from factors.rsi import RSIFactor
-from factors.macd import MACDFactor
-from factors.bollinger import BollingerFactor
+from wave_bottom_strategy.factors.kdj import KDJFactor
+from wave_bottom_strategy.factors.ma import MAFactor
+from wave_bottom_strategy.factors.volume import VolumeFactor
+from wave_bottom_strategy.factors.rsi import RSIFactor
+from wave_bottom_strategy.factors.macd import MACDFactor
+from wave_bottom_strategy.factors.bollinger import BollingerFactor
 from selector.scorer import FactorScorer
-from selector.engine import SelectorEngine
-from backtest.engine import BacktestEngine
-from analysis.metrics import PerformanceMetrics
-from utils.logger import get_logger
+from wave_bottom_strategy.selector.engine import SelectorEngine
+from wave_bottom_strategy.backtest.engine import BacktestEngine
+from wave_bottom_strategy.analysis.metrics import PerformanceMetrics
+from wave_bottom_strategy.utils.logger import get_logger
 
 logger = get_logger('integration_test')
 
@@ -187,7 +187,7 @@ def test_analysis_layer():
     np.random.seed(42)
     returns = pd.Series(np.random.randn(100) * 0.02)
     
-    from analysis.metrics import PerformanceMetrics
+    from wave_bottom_strategy.analysis.metrics import PerformanceMetrics
     
     metrics = PerformanceMetrics(returns)
     
