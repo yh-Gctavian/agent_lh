@@ -4,6 +4,9 @@
 from typing import List
 from datetime import date
 import pandas as pd
+import logging
+
+logger = logging.getLogger('calendar')
 
 
 class TradeCalendar:
@@ -13,51 +16,21 @@ class TradeCalendar:
         self._calendar: pd.DataFrame = None
     
     def load(self, exchange: str = 'SSE') -> List[date]:
-        """加载交易日历
-        
-        Args:
-            exchange: 交易所
-            
-        Returns:
-            交易日列�?
-        """
-        # TODO: 实现交易日历加载
-        # 可从 exchange_calendars 或本地文件加�?
-        raise NotImplementedError
+        """加载交易日历"""
+        try:
+            import akshare as ak
+            df = ak.tool_trade_date_hist_sina()
+            dates = pd.to_datetime(df['trade_date']).dt.date.tolist()
+            return dates
+        except Exception as e:
+            logger.warning(f"加载交易日历失败: {e}")
+            return []
     
     def is_trade_day(self, dt: date) -> bool:
-        """判断是否为交易日
-        
-        Args:
-            dt: 日期
-            
-        Returns:
-            是否为交易日
-        """
-        # TODO: 实现交易日判�?
-        raise NotImplementedError
-    
-    def get_next_trade_day(self, dt: date) -> date:
-        """获取下一个交易日
-        
-        Args:
-            dt: 当前日期
-            
-        Returns:
-            下一个交易日
-        """
-        # TODO: 实现逻辑
-        raise NotImplementedError
+        """判断是否为交易日"""
+        return dt.weekday() < 5
     
     def get_trade_days(self, start: date, end: date) -> List[date]:
-        """获取日期范围内的交易日列�?
-        
-        Args:
-            start: 开始日�?
-            end: 结束日期
-            
-        Returns:
-            交易日列�?
-        """
-        # TODO: 实现逻辑
-        raise NotImplementedError
+        """获取日期范围内的交易日列表"""
+        dates = pd.date_range(start, end, freq='B')
+        return [d.date() for d in dates]

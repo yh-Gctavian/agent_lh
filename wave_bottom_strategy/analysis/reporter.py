@@ -1,45 +1,35 @@
 # -*- coding: utf-8 -*-
-"""Report generator"""
+"""报告生成器"""
 
-from typing import Dict, Optional
+from typing import Dict
 from pathlib import Path
-import pandas as pd
 from datetime import datetime
 
 
 class ReportGenerator:
-    """Generate backtest analysis reports"""
+    """报告生成器"""
     
     def __init__(self, output_dir: Path = None):
         self.output_dir = output_dir or Path('reports')
         self.output_dir.mkdir(parents=True, exist_ok=True)
     
-    def generate(self, metrics: Dict, backtest_result: Dict, format: str = 'markdown') -> Path:
-        """Generate report"""
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        content = self._generate_markdown(metrics, backtest_result)
-        
-        filename = f"backtest_report_{timestamp}.md"
-        output_path = self.output_dir / filename
-        output_path.write_text(content, encoding='utf-8')
-        return output_path
-    
-    def _generate_markdown(self, metrics: Dict, backtest_result: Dict) -> str:
-        """Generate markdown report"""
+    def generate(self, metrics: Dict, result: Dict) -> Path:
+        """生成报告"""
         lines = [
-            "# Wave Bottom Strategy Backtest Report",
+            "# 波段抄底策略回测报告",
             "",
-            f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             "",
-            "## Performance Metrics",
+            "## 绩效指标",
             "",
-            "| Metric | Value |",
-            "|--------|-------|",
+            f"- 胜率: {metrics.get('win_rate', 0):.2%}",
+            f"- 夏普比率: {metrics.get('sharpe_ratio', 0):.2f}",
+            f"- 最大回撤: {metrics.get('max_drawdown', 0):.2%}",
+            "",
+            f"初始资金: {result.get('initial', 0):,.0f}",
+            f"最终净值: {result.get('final', 0):,.0f}",
         ]
-        for key, value in metrics.items():
-            if isinstance(value, float):
-                lines.append(f"| {key} | {value:.4f} |")
-            else:
-                lines.append(f"| {key} | {value} |")
         
-        return "\n".join(lines)
+        output_path = self.output_dir / f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+        output_path.write_text("\n".join(lines), encoding='utf-8')
+        return output_path

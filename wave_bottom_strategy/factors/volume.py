@@ -16,48 +16,30 @@ class VolumeFactor(Factor):
         self.ma_period = self.params.get('ma_period', 5)
     
     def calculate(self, data: pd.DataFrame) -> pd.DataFrame:
+        """计算成交量指标"""
         volume = data['volume'].values
         
-        result = pd.DataFrame()
-        result['trade_date'] = data['trade_date'] if 'trade_date' in data.columns else data.index
-        result['volume'] = volume
+        vol_ma = np.zeros(len(volume))
+        for i in range(self.ma_period - 1, len(volume)):
+            vol_ma[i] = volume[i-self.ma_period+1:i+1].mean()
         
-        result['vol_ma'] = self._calc_ma(volume, self.ma_period)
-        result['vol_ratio'] = volume / result['vol_ma']
-        result['low_vol_days'] = self._count_low_vol(volume, result['vol_ma'].values)
-        
-        return result
-    
-    def _calc_ma(self, data, period):
-        result = np.zeros(len(data))
-        for i in range(period - 1, len(data)):
-            result[i] = data[i-period+1:i+1].mean()
-        for i in range(period - 1):
-            result[i] = data[:i+1].mean() if i > 0 else data[0]
-        return result
-    
-    def _count_low_vol(self, volume, vol_ma):
-        result = np.zeros(len(volume))
-        count = 0
+        vol_ratio = np.zeros(len(volume))
         for i in range(len(volume)):
-            if vol_ma[i] > 0 and volume[i] < vol_ma[i] * 0.7:
-                count += 1
-            else:
-                count = 0
-            result[i] = count
-        return result
+            if vol_ma[i] > 0:
+                vol_ratio[i] = volume[i] / vol_ma[i]
+        
+        return pd.DataFrame({
+            'trade_date': data['trade_date'] if 'trade_date' in data.columns else data.index,
+            'volume': volume, 'vol_ma': vol_ma, 'vol_ratio': vol_ratio
+        })
     
-    def get_score(self, vol_data: pd.DataFrame) -> pd.Series:
-        low_vol_days = vol_data['low_vol_days']
+    def get_score(self, vol_data):
+        """计算因子得分"""
         vol_ratio = vol_data['vol_ratio']
-        
         score = pd.Series(40.0, index=vol_data.index)
-        score.loc[low_vol_days >= 5] = 90
-        score.loc[(low_vol_days >= 3) & (low_vol_days < 5)] = 80
-        score.loc[(low_vol_days >= 1) & (low_vol_days < 3)] = 60
-        score.loc[vol_ratio > 2] = 70
         score.loc[vol_ratio < 0.3] = 85
-        
+        score.loc[(vol_ratio >= 0.3) & (vol_ratio < 0.5)] = 70
+        score.loc[vol_ratio > 2] = 70
         return score
     
     @property
