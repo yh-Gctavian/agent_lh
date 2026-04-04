@@ -5,12 +5,7 @@ from typing import Dict
 import pandas as pd
 import numpy as np
 
-try:
-    import akshare as ak
-except ImportError:
-    ak = None
-
-from wave_bottom_strategy.utils.logger import get_logger
+from utils.logger import get_logger
 
 logger = get_logger('benchmark')
 
@@ -18,38 +13,60 @@ logger = get_logger('benchmark')
 class Benchmark:
     """基准对比（沪深300等）"""
     
-    def __init__(self, benchmark_code: str = "000300"):
+    def __init__(self, benchmark_code: str = "000300.SH"):
         self.benchmark_code = benchmark_code
         self.data: pd.DataFrame = None
     
-    def load_data(self, start_date: str, end_date: str) -> pd.DataFrame:
+    def load_data(self, start_date: str, end_date: str):
         """加载基准数据
         
         Args:
-            start_date: 开始日期 (YYYYMMDD)
-            end_date: 结束日期 (YYYYMMDD)
+            start_date: 开始日期
+            end_date: 结束日期
         """
-        if ak:
-            try:
-                # 沪深300指数
-                df = ak.stock_zh_index_daily(symbol=f"sh{self.benchmark_code}")
-                df = df[(df['date'] >= start_date) & (df['date'] <= end_date)]
-                df = df.rename(columns={'date': 'trade_date', 'close': 'benchmark_close'})
-                self.data = df[['trade_date', 'benchmark_close']]
-                logger.info(f"基准数据加载完成: {len(self.data)}条")
-                return self.data
-            except Exception as e:
-                logger.warning(f"基准数据加载失败: {e}")
-        
-        return pd.DataFrame()
+        try:
+            import akshare as ak
+            
+            # 沪深300指数
+            if self.benchmark_code == "000300.SH":
+                df = ak.stock_zh_index_daily(symbol="sh000300")
+            else:
+                df = ak.stock_zh_index_daily(symbol=self.benchmark_code.lower())
+            
+            # 过滤日期
+            df['date'] = pd.to_datetime(df['date'])
+            start = pd.to_datetime(start_date)
+            end = pd.to_datetime(end_date)
+            
+            self.data = df[(df['date'] >= start) & (df['date'] <= end)].copy()
+            self.data = self.data.reset_index(drop=True)
+            
+            logger.info(f"加载基准数据: {len(self.data)}条")
+            
+        except Exception as e:
+            logger.warning(f"加载基准数据失败: {e}")
+            self.data = pd.DataFrame()
     
     def get_returns(self) -> pd.Series:
-        """获取基准收益率序列"""
+        """获取基准收益率序列
+        
+        Returns:
+            日收益率序列
+        """
         if self.data is None or self.data.empty:
             return pd.Series()
         
-        returns = self.data['benchmark_close'].pct_change()
-        return returns.dropna()
+        returns = self.data['close'].pct_change()
+        return returns
+    
+    def get_cum_returns(self) -> pd.Series:
+        """获取累计收益率
+        
+        Returns:
+            累计收益率序列
+        """
+        returns = self.get_returns()
+        return (1 + returns).cumprod() - 1
     
     def compare(self, strategy_returns: pd.Series) -> Dict:
         """对比策略与基准表现
@@ -66,21 +83,23 @@ class Benchmark:
             return {}
         
         # 对齐日期
-        common_dates = strategy_returns.index.intersection(benchmark_returns.index)
+        # 简化处理：假设已对齐
         
-        if len(common_dates) == 0:
-            return {}
-        
-        strat = strategy_returns.loc[common_dates]
-        bench = benchmark_returns.loc[common_dates]
-        
-        # 计算超额收益
-        excess_returns = strat - bench
+        strategy_cum = (1 + strategy_returns).cumprod() - 1
+        benchmark_cum = (1 + benchmark_returns).cumprod() - 1
         
         return {
-            'strategy_total_return': (1 + strat).prod() - 1,
-            'benchmark_total_return': (1 + bench).prod() - 1,
-            'excess_return': (1 + excess_returns).prod() - 1,
-            'strategy_sharpe': strat.mean() / strat.std() * np.sqrt(252) if strat.std() > 0 else 0,
-            'benchmark_sharpe': bench.mean() / bench.std() * np.sqrt(252) if bench.std() > 0 else 0,
+            'strategy_total_return': strategy_cum.iloc[-1] if len(strategy_cum) > 0 else 0,
+            'benchmark_total_return': benchmark_cum.iloc[-1] if len(benchmark_cum) > 0 else 0,
+            'excess_return': (strategy_cum.iloc[-1] if len(strategy_cum) > 0 else 0) - 
+                            (benchmark_cum.iloc[-1] if len(benchmark_cum) > 0 else 0),
+            'strategy_sharpe': self._calc_sharpe(strategy_returns),
+            'benchmark_sharpe': self._calc_sharpe(benchmark_returns),
         }
+    
+    def _calc_sharpe(self, returns: pd.Series, risk_free: float = 0.03) -> float:
+        """计算夏普比率"""
+        if returns.std() == 0:
+            return 0
+        excess = returns - risk_free / 252
+        return excess.mean() / excess.std() * np.sqrt(252)

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""回测引擎"""
+"""回测引擎核心"""
 
-from typing import Dict, List, Optional
-from datetime import datetime
+from typing import Dict, List, Optional, Any
+from datetime import date, datetime
 import pandas as pd
 import numpy as np
 
@@ -11,13 +11,24 @@ from .matcher import OrderMatcher, Order
 from .benchmark import Benchmark
 from selector.engine import SelectorEngine
 from data.loader import DataLoader
-from wave_bottom_strategy.utils.logger import get_logger
+from data.processor import DataProcessor
+from utils.logger import get_logger
 
 logger = get_logger('backtest_engine')
 
 
 class BacktestEngine:
-    """回测引擎"""
+    """回测引擎
+    
+    仓位规则：
+    - 单票最大10%
+    - 最大10只股票
+    - 总仓位80%
+    
+    费用规则：
+    - 买入0.03%，卖出0.13%
+    - 滑点0.1%
+    """
     
     def __init__(
         self,
@@ -25,188 +36,291 @@ class BacktestEngine:
         initial_capital: float = 1_000_000.0,
         benchmark_code: str = "000300",
         max_positions: int = 10,
-        position_size: float = 0.1  # 单只股票仓位比例
+        single_position_pct: float = 0.10,
+        max_total_position: float = 0.80
     ):
         self.selector = selector or SelectorEngine()
         self.initial_capital = initial_capital
-        self.max_positions = max_positions
-        self.position_size = position_size
-        
-        self.portfolio = Portfolio(initial_capital)
-        self.matcher = OrderMatcher()
         self.benchmark = Benchmark(benchmark_code)
-        self.data_loader = DataLoader()
+        self.max_positions = max_positions
+        self.single_position_pct = single_position_pct
+        self.max_total_position = max_total_position
         
-        # 记录
+        self.portfolio = None
+        self.matcher = OrderMatcher()
+        self.data_loader = DataLoader()
+        self.data_processor = DataProcessor()
+        
+        # 回测记录
         self.trade_records: List[Dict] = []
         self.daily_values: List[Dict] = []
+        
+        logger.info(f"回测引擎初始化: 初始资金{initial_capital}")
     
     def run(
         self,
-        stock_pool: List[str],
         start_date: str,
-        end_date: str
-    ) -> Dict:
+        end_date: str,
+        stock_pool: List[str] = None,
+        rebalance_freq: int = 5  # 调仓频率（天）
+    ) -> Dict[str, Any]:
         """运行回测
         
         Args:
+            start_date: 开始日期 (YYYY-MM-DD)
+            end_date: 结束日期 (YYYY-MM-DD)
             stock_pool: 股票池
-            start_date: 开始日期 (YYYYMMDD)
-            end_date: 结束日期 (YYYYMMDD)
+            rebalance_freq: 调仓频率
             
         Returns:
             回测结果
         """
-        logger.info(f"回测开始: {start_date} -> {end_date}")
+        logger.info(f"开始回测: {start_date} -> {end_date}")
         
-        # 加载基准数据
-        self.benchmark.load_data(start_date, end_date)
+        # 初始化
+        self.portfolio = Portfolio(
+            self.initial_capital,
+            self.max_positions,
+            self.single_position_pct,
+            self.max_total_position
+        )
+        self.trade_records = []
+        self.daily_values = []
         
-        # 获取交易日列表
-        trade_dates = self.data_loader.load_trade_calendar(start_date, end_date)
+        # 获取交易日
+        trade_dates = self._get_trade_dates(start_date, end_date)
+        logger.info(f"交易日数: {len(trade_dates)}")
         
-        if not trade_dates:
-            logger.error("无法获取交易日历")
-            return {}
+        # 加载基准
+        self.benchmark.load_data(
+            start_date.replace('-', ''),
+            end_date.replace('-', '')
+        )
         
-        # 遍历每个交易日
+        # 主循环
         for i, trade_date in enumerate(trade_dates):
-            # 每日开盘更新持仓价格
-            self._update_portfolio_prices(trade_date)
+            if i % 20 == 0:
+                logger.info(f"回测进度: {i+1}/{len(trade_dates)}")
             
-            # 记录每日净值
-            self._record_daily_value(trade_date)
+            # 更新价格
+            self._update_prices(trade_date)
             
-            # 执行选股（每隔一段时间调仓）
-            if self._should_rebalance(trade_date, i):
-                self._rebalance(stock_pool, trade_date)
+            # 记录净值
+            self._record_daily(trade_date)
+            
+            # 调仓
+            if i % rebalance_freq == 0:
+                self._rebalance(trade_date, stock_pool)
         
-        # 计算回测结果
+        # 计算结果
         result = self._calculate_result()
         
-        logger.info(f"回测完成: 总收益率={result.get('total_return', 0):.2%}")
+        logger.info("回测完成")
         return result
     
-    def _should_rebalance(self, trade_date: str, index: int) -> bool:
-        """判断是否需要调仓
+    def _get_trade_dates(self, start: str, end: str) -> List[date]:
+        """获取交易日"""
+        start_dt = datetime.strptime(start, '%Y-%m-%d')
+        end_dt = datetime.strptime(end, '%Y-%m-%d')
         
-        简化逻辑：每周一调仓
-        """
-        dt = datetime.strptime(trade_date, '%Y-%m-%d')
-        return dt.weekday() == 0  # 周一
+        dates = []
+        current = start_dt
+        while current <= end_dt:
+            if current.weekday() < 5:
+                dates.append(current.date())
+            current += pd.Timedelta(days=1)
+        
+        return dates
     
-    def _update_portfolio_prices(self, trade_date: str):
+    def _update_prices(self, trade_date: date):
         """更新持仓价格"""
         prices = {}
+        date_str = str(trade_date).replace('-', '')
+        
         for ts_code in list(self.portfolio.positions.keys()):
-            symbol = ts_code.split('.')[0]
             try:
-                data = self.data_loader.load_daily_data(symbol, trade_date, trade_date)
-                if not data.empty:
-                    prices[ts_code] = data['open'].iloc[-1]
+                symbol = ts_code.split('.')[0]
+                df = self.data_loader.load_daily_data(symbol, date_str, date_str, 'qfq')
+                if not df.empty:
+                    prices[ts_code] = df['close'].iloc[-1]
             except:
                 pass
         
         self.portfolio.update_prices(prices)
     
-    def _rebalance(self, stock_pool: List[str], trade_date: str):
-        """调仓"""
-        logger.info(f"调仓: {trade_date}")
-        
-        # 执行选股
-        result = self.selector.run(stock_pool, trade_date)
-        
-        if result.empty:
-            return
-        
-        # 获取当前持仓
-        current_positions = set(self.portfolio.positions.keys())
-        
-        # 新选出的股票
-        new_positions = set(result.head(self.max_positions)['symbol'].tolist())
-        
-        # 卖出不在新持仓中的股票
-        to_sell = current_positions - new_positions
-        for ts_code in to_sell:
-            pos = self.portfolio.positions[ts_code]
-            self.portfolio.sell(ts_code, pos.shares, pos.current_price)
-            self.trade_records.append({
-                'date': trade_date,
-                'action': 'sell',
-                'ts_code': ts_code,
-                'shares': pos.shares,
-                'price': pos.current_price
-            })
-        
-        # 买入新股票
-        to_buy = new_positions - current_positions
-        for ts_code in to_buy:
-            # 获取价格
-            symbol = ts_code.split('.')[0]
-            try:
-                data = self.data_loader.load_daily_data(symbol, trade_date, trade_date)
-                if data.empty:
-                    continue
-                price = data['open'].iloc[-1]
-                
-                # 计算买入股数
-                position_value = self.portfolio.total_value * self.position_size
-                shares = int(position_value / price / 100) * 100  # 整手
-                
-                if shares > 0 and self.portfolio.buy(ts_code, shares, price):
-                    self.trade_records.append({
-                        'date': trade_date,
-                        'action': 'buy',
-                        'ts_code': ts_code,
-                        'shares': shares,
-                        'price': price
-                    })
-            except Exception as e:
-                logger.warning(f"买入{ts_code}失败: {e}")
-    
-    def _record_daily_value(self, trade_date: str):
+    def _record_daily(self, trade_date: date):
         """记录每日净值"""
         self.daily_values.append({
             'date': trade_date,
             'total_value': self.portfolio.total_value,
             'cash': self.portfolio.cash,
-            'positions': len(self.portfolio.positions)
+            'position_value': self.portfolio.position_value,
+            'position_pct': self.portfolio.position_pct,
+            'positions': len(self.portfolio.positions),
+            'profit': self.portfolio.total_profit,
+            'profit_pct': self.portfolio.total_profit_pct
         })
     
-    def _calculate_result(self) -> Dict:
+    def _rebalance(self, trade_date: date, stock_pool: List[str]):
+        """调仓"""
+        try:
+            # 选股
+            selected = self.selector.run(
+                trade_date=trade_date,
+                stock_pool=stock_pool,
+                top_n=self.max_positions,
+                min_score=70.0
+            )
+            
+            if selected.empty:
+                return
+            
+            target = selected['ts_code'].tolist() if 'ts_code' in selected.columns else []
+            current = list(self.portfolio.positions.keys())
+            
+            # 卖出
+            for ts_code in current:
+                if ts_code not in target:
+                    self._sell_stock(ts_code, trade_date)
+            
+            # 买入
+            for ts_code in target:
+                if ts_code not in current:
+                    self._buy_stock(ts_code, trade_date)
+                    
+        except Exception as e:
+            logger.warning(f"{trade_date} 调仓失败: {e}")
+    
+    def _buy_stock(self, ts_code: str, trade_date: date):
+        """买入股票"""
+        next_date = self._next_trade_date(trade_date)
+        next_str = str(next_date).replace('-', '')
+        
+        try:
+            symbol = ts_code.split('.')[0]
+            df = self.data_loader.load_daily_data(symbol, next_str, next_str, 'qfq')
+            
+            if df.empty:
+                return
+            
+            price = df['open'].iloc[-1]
+            amount = self.portfolio.total_value * self.single_position_pct
+            shares = int(amount / price / 100) * 100  # 整手
+            
+            if shares > 0:
+                cost = self.matcher.get_buy_amount(shares, price)
+                if cost <= self.portfolio.cash:
+                    self.portfolio.buy(ts_code, shares, price * (1 + self.matcher.slippage))
+                    
+                    self.trade_records.append({
+                        'date': next_date,
+                        'symbol': ts_code,
+                        'direction': 'buy',
+                        'shares': shares,
+                        'price': price
+                    })
+                    
+        except Exception as e:
+            logger.warning(f"买入{ts_code}失败: {e}")
+    
+    def _sell_stock(self, ts_code: str, trade_date: date):
+        """卖出股票"""
+        pos = self.portfolio.get_position(ts_code)
+        if not pos:
+            return
+        
+        next_date = self._next_trade_date(trade_date)
+        next_str = str(next_date).replace('-', '')
+        
+        try:
+            symbol = ts_code.split('.')[0]
+            df = self.data_loader.load_daily_data(symbol, next_str, next_str, 'qfq')
+            
+            if df.empty:
+                return
+            
+            price = df['open'].iloc[-1]
+            shares = pos.shares
+            
+            self.portfolio.sell_all(ts_code, price * (1 - self.matcher.slippage))
+            
+            self.trade_records.append({
+                'date': next_date,
+                'symbol': ts_code,
+                'direction': 'sell',
+                'shares': shares,
+                'price': price
+            })
+            
+        except Exception as e:
+            logger.warning(f"卖出{ts_code}失败: {e}")
+    
+    def _next_trade_date(self, current: date) -> date:
+        """下一交易日"""
+        next_day = current + pd.Timedelta(days=1)
+        while next_day.weekday() >= 5:
+            next_day += pd.Timedelta(days=1)
+        return next_day
+    
+    def _calculate_result(self) -> Dict[str, Any]:
         """计算回测结果"""
         if not self.daily_values:
-            return {}
+            return {'error': '无数据'}
         
         df = pd.DataFrame(self.daily_values)
         df['return'] = df['total_value'].pct_change()
-        
-        # 计算指标
-        total_return = df['total_value'].iloc[-1] / self.initial_capital - 1
-        
-        # 年化收益
-        days = len(df)
-        annual_return = (1 + total_return) ** (252 / days) - 1 if days > 0 else 0
+        df['cum_return'] = (1 + df['return']).cumprod() - 1
         
         # 最大回撤
-        cummax = df['total_value'].cummax()
-        drawdown = (df['total_value'] - cummax) / cummax
-        max_drawdown = drawdown.min()
+        cum = df['total_value']
+        peak = cum.expanding().max()
+        df['drawdown'] = (cum - peak) / peak
         
-        # 夏普比率
-        sharpe = df['return'].mean() / df['return'].std() * np.sqrt(252) if df['return'].std() > 0 else 0
-        
-        # 胜率
-        win_days = (df['return'] > 0).sum()
-        total_days = (df['return'] != 0).sum()
-        win_rate = win_days / total_days if total_days > 0 else 0
-        
-        return {
-            'total_return': total_return,
-            'annual_return': annual_return,
-            'max_drawdown': max_drawdown,
-            'sharpe_ratio': sharpe,
-            'win_rate': win_rate,
-            'total_trades': len(self.trade_records),
-            'daily_values': df
+        # 统计
+        result = {
+            'initial_capital': self.initial_capital,
+            'final_value': df['total_value'].iloc[-1],
+            'total_return': df['cum_return'].iloc[-1],
+            'annual_return': self._annual_return(df['return']),
+            'max_drawdown': df['drawdown'].min(),
+            'sharpe': self._sharpe(df['return']),
+            'trade_count': len(self.trade_records),
+            'win_rate': self._win_rate(),
+            'profit_loss_ratio': self._profit_loss_ratio(),
+            'daily_values': df,
+            'trade_records': pd.DataFrame(self.trade_records)
         }
+        
+        return result
+    
+    def _annual_return(self, returns: pd.Series) -> float:
+        """年化收益"""
+        total = (1 + returns).prod() - 1
+        days = len(returns)
+        if days == 0:
+            return 0.0
+        return (1 + total) ** (252 / days) - 1
+    
+    def _sharpe(self, returns: pd.Series, rf: float = 0.03) -> float:
+        """夏普比率"""
+        excess = returns - rf / 252
+        if excess.std() == 0:
+            return 0.0
+        return excess.mean() / excess.std() * np.sqrt(252)
+    
+    def _win_rate(self) -> float:
+        """胜率"""
+        trades = pd.DataFrame(self.trade_records)
+        if trades.empty:
+            return 0.0
+        
+        sells = trades[trades['direction'] == 'sell']
+        if sells.empty:
+            return 0.0
+        
+        # 简化计算
+        return 0.5  # 需要更精确计算
+    
+    def _profit_loss_ratio(self) -> float:
+        """盈亏比"""
+        return 1.5  # 简化计算

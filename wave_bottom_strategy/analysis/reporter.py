@@ -6,9 +6,9 @@ from pathlib import Path
 from datetime import datetime
 import pandas as pd
 
-from wave_bottom_strategy.utils.logger import get_logger
+from utils.logger import get_logger
 
-logger = get_logger('reporter')
+logger = get_logger('report_generator')
 
 
 class ReportGenerator:
@@ -21,31 +21,27 @@ class ReportGenerator:
     def generate(
         self,
         metrics: Dict,
-        backtest_result: Dict,
+        daily_df: pd.DataFrame = None,
         layer_result: pd.DataFrame = None,
-        format: str = 'markdown'
+        sensitivity_result: pd.DataFrame = None
     ) -> Path:
         """生成报告"""
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        
-        if format == 'markdown':
-            content = self._gen_markdown(metrics, backtest_result, layer_result)
-            filename = f"backtest_report_{timestamp}.md"
-        else:
-            content = self._gen_html(metrics, backtest_result, layer_result)
-            filename = f"backtest_report_{timestamp}.html"
-        
+        filename = f"backtest_report_{timestamp}.md"
         filepath = self.output_dir / filename
+        
+        content = self._generate_markdown(metrics, daily_df, layer_result, sensitivity_result)
         filepath.write_text(content, encoding='utf-8')
         
-        logger.info(f"报告生成: {filepath}")
+        logger.info(f"报告已生成: {filepath}")
         return filepath
     
-    def _gen_markdown(
+    def _generate_markdown(
         self,
         metrics: Dict,
-        result: Dict,
-        layer: pd.DataFrame
+        daily_df: pd.DataFrame,
+        layer_result: pd.DataFrame,
+        sensitivity_result: pd.DataFrame
     ) -> str:
         lines = [
             "# 波段抄底策略回测报告",
@@ -59,42 +55,28 @@ class ReportGenerator:
         ]
         
         for key, value in metrics.items():
-            if isinstance(value, float):
-                lines.append(f"| {key} | {value:.4f} |")
-            else:
-                lines.append(f"| {key} | {value} |")
+            lines.append(f"| {key} | {value} |")
         
-        lines.extend([
-            "",
-            "## 二、收益统计",
-            "",
-            f"- 初始资金: {result.get('initial', 'N/A'):,.0f}",
-            f"- 最终资金: {result.get('final', 'N/A'):,.0f}",
-            f"- 总收益率: {result.get('total_return', 0)*100:.2f}%",
-            f"- 交易次数: {result.get('trades', 0)}",
-            "",
-        ])
-        
-        if layer is not None and not layer.empty:
+        if layer_result is not None and not layer_result.empty:
             lines.extend([
-                "## 三、分层分析",
                 "",
-                layer.to_markdown(),
+                "## 二、分层分析",
                 "",
+                layer_result.to_markdown(index=False),
+            ])
+        
+        if sensitivity_result is not None and not sensitivity_result.empty:
+            lines.extend([
+                "",
+                "## 三、参数敏感性分析",
+                "",
+                sensitivity_result.to_markdown(index=False),
             ])
         
         lines.extend([
+            "",
             "---",
-            "*量化开发经理 (KkTTM7)*"
+            f"*报告生成于 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*"
         ])
         
         return "\n".join(lines)
-    
-    def _gen_html(
-        self,
-        metrics: Dict,
-        result: Dict,
-        layer: pd.DataFrame
-    ) -> str:
-        # 简化HTML生成
-        return f"<html><body><h1>回测报告</h1><pre>{metrics}</pre></body></html>"
