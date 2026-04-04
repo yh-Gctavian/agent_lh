@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""回测模块"""
+"""Backtest module"""
 
 from .engine import BacktestEngine
 from .portfolio import Portfolio

@@ -1,33 +1,23 @@
 # -*- coding: utf-8 -*-
-"""通用工具函数"""
+"""Helper utilities"""
 
 from pathlib import Path
-import re
 
 
 def normalize_code(code: str) -> str:
-    """标准化股票代码格式"""
+    """Normalize stock code format"""
     code = code.strip()
     if '.' in code:
         return code
     if code.startswith('6'):
-        return f"{code}.SH"
+        return "%s.SH" % code
     elif code.startswith(('0', '3')):
-        return f"{code}.SZ"
+        return "%s.SZ" % code
     else:
-        return f"{code}.SZ"
+        return "%s.SZ" % code
 
 
 def ensure_dir(path: Path) -> Path:
-    """确保目录存在"""
+    """Ensure directory exists"""
     path.mkdir(parents=True, exist_ok=True)
     return path
-
-
-def parse_date(date_str: str) -> str:
-    """解析日期字符串"""
-    pattern = r'(\d{4})[-/]?(\d{2})[-/]?(\d{2})'
-    match = re.match(pattern, date_str)
-    if match:
-        return f"{match.group(1)}-{match.group(2)}-{match.group(3)}"
-    return date_str

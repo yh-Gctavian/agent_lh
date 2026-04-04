@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""布林带因子 - 权重5%"""
+"""Bollinger Bands factor - 5% weight"""
 
 from typing import Dict, Any
 import pandas as pd
@@ -9,7 +9,7 @@ from .base import Factor
 
 
 class BollingerFactor(Factor):
-    """布林带因子"""
+    """Bollinger Bands Factor"""
     
     def __init__(self, params: Dict[str, Any] = None):
         super().__init__(params)
@@ -17,7 +17,9 @@ class BollingerFactor(Factor):
         self.std_dev = self.params.get('std_dev', 2.0)
     
     def calculate(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Calculate Bollinger Bands"""
         close = data['close'].values
+        
         mid = np.zeros(len(close))
         upper = np.zeros(len(close))
         lower = np.zeros(len(close))
@@ -29,19 +31,19 @@ class BollingerFactor(Factor):
             lower[i] = mid[i] - self.std_dev * std
         
         result = pd.DataFrame({
-            'trade_date': data['trade_date'],
-            'upper': upper,
-            'mid': mid,
-            'lower': lower
+            'trade_date': data['trade_date'] if 'trade_date' in data.columns else data.index,
+            'upper': upper, 'mid': mid, 'lower': lower, 'close': close
         })
         result['bb_pos'] = (close - lower) / (upper - lower) * 100
         return result
     
-    def get_score(self, bb_data: pd.DataFrame) -> pd.Series:
+    def get_score(self, bb_data):
+        """Calculate factor score"""
         bb_pos = bb_data['bb_pos']
         score = pd.Series(40.0, index=bb_data.index)
         score.loc[bb_pos < 10] = 90
         score.loc[(bb_pos >= 10) & (bb_pos < 20)] = 80
+        score.loc[(bb_pos >= 20) & (bb_pos < 30)] = 60
         return score
     
     @property

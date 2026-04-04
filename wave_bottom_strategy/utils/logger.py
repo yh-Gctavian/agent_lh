@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""日志工具"""
+"""Logger utility"""
 
 import logging
 from pathlib import Path
 
 
 def get_logger(name: str = 'wave_bottom', level: str = 'INFO', log_file: str = None) -> logging.Logger:
-    """获取日志器"""
+    """Get logger"""
     logger = logging.getLogger(name)
     logger.setLevel(level)
     

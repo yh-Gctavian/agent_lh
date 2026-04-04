@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""分析模块"""
+"""Analysis module"""
 
 from .metrics import PerformanceMetrics
 from .reporter import ReportGenerator

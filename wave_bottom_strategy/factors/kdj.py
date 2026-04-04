@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""KDJ因子 - 核心因子权重45%"""
+"""KDJ factor - Core factor with 45% weight"""
 
 from typing import Dict, Any
 import pandas as pd
@@ -9,7 +9,7 @@ from .base import Factor
 
 
 class KDJFactor(Factor):
-    """KDJ随机指标因子"""
+    """KDJ Stochastic Oscillator Factor"""
     
     def __init__(self, params: Dict[str, Any] = None):
         super().__init__(params)
@@ -18,7 +18,7 @@ class KDJFactor(Factor):
         self.m2 = self.params.get('m2', 3)
     
     def calculate(self, data: pd.DataFrame) -> pd.DataFrame:
-        """计算KDJ值"""
+        """Calculate KDJ values"""
         high = data['high'].values
         low = data['low'].values
         close = data['close'].values
@@ -32,7 +32,7 @@ class KDJFactor(Factor):
         })
     
     def _calc_kdj(self, high, low, close):
-        """手动计算KDJ"""
+        """Calculate KDJ manually"""
         n = self.n
         rsv = np.zeros(len(close))
         
@@ -47,7 +47,7 @@ class KDJFactor(Factor):
         return k, d
     
     def _sma(self, data, period):
-        """简单移动平均"""
+        """Simple moving average"""
         result = np.zeros(len(data))
         result[period-1] = data[:period].mean()
         for i in range(period, len(data)):
@@ -55,7 +55,7 @@ class KDJFactor(Factor):
         return result
     
     def get_score(self, kdj_data):
-        """计算因子得分"""
+        """Calculate factor score"""
         j = kdj_data['j']
         score = pd.Series(30.0, index=kdj_data.index)
         score.loc[j < 20] = 100

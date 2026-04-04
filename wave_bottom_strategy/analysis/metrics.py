@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""绩效指标计算"""
+"""Performance metrics calculation"""
 
 from typing import Dict
 import pandas as pd
@@ -7,13 +7,13 @@ import numpy as np
 
 
 class PerformanceMetrics:
-    """绩效指标计算"""
+    """Performance metrics calculation"""
     
     def __init__(self, returns: pd.Series = None):
         self.returns = returns
     
     def win_rate(self) -> float:
-        """计算胜率"""
+        """Calculate win rate"""
         if self.returns is None:
             return 0.0
         winning = self.returns[self.returns > 0]
@@ -21,7 +21,7 @@ class PerformanceMetrics:
         return len(winning) / total if total > 0 else 0.0
     
     def sharpe_ratio(self, rf: float = 0.03) -> float:
-        """计算夏普比率"""
+        """Calculate Sharpe ratio"""
         if self.returns is None or len(self.returns) == 0:
             return 0.0
         excess = self.returns - rf / 252
@@ -30,7 +30,7 @@ class PerformanceMetrics:
         return excess.mean() / excess.std() * np.sqrt(252)
     
     def max_drawdown(self) -> float:
-        """计算最大回撤"""
+        """Calculate max drawdown"""
         if self.returns is None or len(self.returns) == 0:
             return 0.0
         cum = (1 + self.returns).cumprod()
@@ -38,7 +38,7 @@ class PerformanceMetrics:
         return ((cum - peak) / peak).min()
     
     def get_all_metrics(self) -> Dict:
-        """获取所有指标"""
+        """Get all metrics"""
         return {
             'win_rate': self.win_rate(),
             'sharpe_ratio': self.sharpe_ratio(),

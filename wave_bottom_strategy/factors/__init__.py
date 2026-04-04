@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""因子模块"""
+"""Factors module"""
 
 from .base import Factor
 from .kdj import KDJFactor

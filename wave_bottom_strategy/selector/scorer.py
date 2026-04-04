@@ -1,30 +1,41 @@
 # -*- coding: utf-8 -*-
-"""因子打分器"""
+"""Factor scorer module"""
 
-from typing import List
+from typing import List, Dict
 import pandas as pd
-import logging
 
 from factors.kdj import KDJFactor
 from factors.ma import MAFactor
 from factors.volume import VolumeFactor
-
-logger = logging.getLogger('factor_scorer')
+from factors.rsi import RSIFactor
+from factors.macd import MACDFactor
+from factors.bollinger import BollingerFactor
 
 
 class FactorScorer:
-    """因子打分器"""
+    """Factor scorer - Calculate 6 factors and weighted score"""
     
     def __init__(self):
         self.factors = [
-            KDJFactor(),
-            MAFactor(),
-            VolumeFactor(),
+            KDJFactor(), VolumeFactor(), MAFactor(),
+            RSIFactor(), MACDFactor(), BollingerFactor()
         ]
     
     def score_stock(self, data: pd.DataFrame) -> pd.DataFrame:
-        """对股票评分"""
+        """Score a single stock"""
         result = pd.DataFrame()
         result['trade_date'] = data['trade_date'] if 'trade_date' in data.columns else data.index
-        result['total_score'] = 50.0
+        
+        total_score = pd.Series(0.0, index=data.index)
+        
+        for factor in self.factors:
+            try:
+                factor_data = factor.calculate(data)
+                score = factor.get_score(factor_data)
+                result['%s_score' % factor.name] = score
+                total_score = total_score + score * factor.weight
+            except Exception as e:
+                pass
+        
+        result['total_score'] = total_score
         return result

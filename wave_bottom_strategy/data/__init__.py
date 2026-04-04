@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Data module initialization"""
+"""Data module"""
 
 from .loader import DataLoader
 from .processor import DataProcessor

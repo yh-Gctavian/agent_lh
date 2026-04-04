@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""选股模块"""
+"""Selector module"""
 
 from .scorer import FactorScorer
 from .filter import StockFilter

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""成交量因子 - 权重15%"""
+"""Volume factor - 15% weight"""
 
 from typing import Dict, Any
 import pandas as pd
@@ -9,14 +9,14 @@ from .base import Factor
 
 
 class VolumeFactor(Factor):
-    """成交量因子"""
+    """Volume Factor"""
     
     def __init__(self, params: Dict[str, Any] = None):
         super().__init__(params)
         self.ma_period = self.params.get('ma_period', 5)
     
     def calculate(self, data: pd.DataFrame) -> pd.DataFrame:
-        """计算成交量指标"""
+        """Calculate volume indicators"""
         volume = data['volume'].values
         
         vol_ma = np.zeros(len(volume))
@@ -34,7 +34,7 @@ class VolumeFactor(Factor):
         })
     
     def get_score(self, vol_data):
-        """计算因子得分"""
+        """Calculate factor score"""
         vol_ratio = vol_data['vol_ratio']
         score = pd.Series(40.0, index=vol_data.index)
         score.loc[vol_ratio < 0.3] = 85
