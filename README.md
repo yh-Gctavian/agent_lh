@@ -6,13 +6,13 @@
 
 ```
 wave_bottom_strategy/
-├── config/          # 配置模块
-├── data/            # 数据模块（AKShare）
-├── factors/         # 6因子模块
-├── selector/        # 选股模块
-├── backtest/        # 回测模块
-├── analysis/        # 分析模块
-├── utils/           # 工具模块
+├── config/          # 配置模块（因子参数、回测配置）
+├── data/            # 数据模块（AKShare加载、预处理、缓存）
+├── factors/         # 因子模块（KDJ、MA、成交量、RSI、MACD、布林带）
+├── selector/        # 选股模块（打分、筛选、信号生成）
+├── backtest/        # 回测模块（引擎、组合管理、订单撮合）
+├── analysis/        # 分析模块（绩效指标、分层分析、报告生成）
+├── utils/           # 工具模块（日志、交易日历）
 ├── tests/           # 单元测试
 └── main.py          # 主入口
 ```
@@ -21,12 +21,18 @@ wave_bottom_strategy/
 
 | 因子 | 权重 | 说明 |
 |------|------|------|
-| KDJ | 45% | 核心抄底指标 |
-| 成交量 | 15% | 量比/缩量判断 |
-| 均线 | 15% | 均线偏离度 |
+| KDJ | 45% | 抄底核心指标，超卖信号强 |
+| 成交量 | 15% | 底部放量确认 |
+| 均线 | 15% | 趋势辅助 |
 | RSI | 10% | 超卖确认 |
 | MACD | 10% | 趋势转折 |
 | 布林带 | 5% | 价格通道 |
+
+## 回测规则
+
+- **仓位控制**：单票10%，最大10只，总仓位80%
+- **交易费用**：买入0.03%，卖出0.13%（含印花税），滑点0.1%
+- **基准对比**：沪深300指数
 
 ## 快速开始
 
@@ -35,33 +41,27 @@ wave_bottom_strategy/
 pip install -r requirements.txt
 
 # 运行回测
-python -m wave_bottom_strategy.main --mode backtest --start 2020-01-01 --end 2025-12-31
+python wave_bottom_strategy/main.py --mode backtest --start 2020-01-01 --end 2025-12-31
 
-# 运行选股
-python -m wave_bottom_strategy.main --mode select --start 2025-04-01
+# 执行选股
+python wave_bottom_strategy/main.py --mode select --end 2025-04-04
 ```
 
-## 开发进度
+## 开发里程碑
 
-| 阶段 | 状态 |
-|------|------|
-| M0 项目初始化 | ✅ |
-| M1 数据层 | ✅ |
-| M2 因子层 | ✅ |
-| M3 选股引擎 | ✅ |
-| M4 回测框架 | ✅ |
-| M5 胜率分析 | ✅ |
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| M0 | 项目初始化 | ✅ 完成 |
+| M1 | 数据层开发 | ✅ 完成 |
+| M2 | 因子计算模块 | ✅ 完成 |
+| M3 | 选股引擎开发 | ✅ 完成 |
+| M4 | 回测框架开发 | ✅ 完成 |
+| M5 | 胜率分析模块 | ✅ 完成 |
+| M6 | 联调与优化 | 🔄 进行中 |
 
 ## 技术方案
 
 详见：[docs/波段抄底策略_技术方案_v1.0.md](docs/波段抄底策略_技术方案_v1.0.md)
-
-## 依赖
-
-- Python 3.10+
-- pandas, numpy
-- akshare (数据源)
-- talib (技术指标，可选)
 
 ---
 

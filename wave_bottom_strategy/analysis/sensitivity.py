@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from itertools import product
 
-from utils.logger import get_logger
+from wave_bottom_strategy.utils.logger import get_logger
 
 logger = get_logger('sensitivity_analysis')
 
@@ -15,58 +15,98 @@ class SensitivityAnalysis:
     """参数敏感性分析
     
     测试不同参数组合下的策略表现
-    输出最优参数组合
     """
     
     def __init__(self, param_ranges: Dict[str, List[Any]] = None):
         """初始化
         
         Args:
-            param_ranges: 参数范围，如 {'kdj_j_threshold': [15, 20, 25]}
+            param_ranges: 参数范围，如 {'kdj_n': [5, 9, 14], 'min_score': [50, 60, 70]}
         """
         self.param_ranges = param_ranges or {}
     
-    def grid_search(
+    def set_param_ranges(self, param_ranges: Dict[str, List[Any]]):
+        """设置参数范围"""
+        self.param_ranges = param_ranges
+    
+    def run_analysis(
         self,
         backtest_func: Callable,
         base_params: Dict[str, Any] = None
     ) -> pd.DataFrame:
-        """网格搜索
+        """运行敏感性分析
         
         Args:
-            backtest_func: 回测函数，接受参数字典返回结果字典
+            backtest_func: 回测函数，接受参数字典，返回指标字典
             base_params: 基础参数
             
         Returns:
             各参数组合的回测结果
         """
         base_params = base_params or {}
+        results = []
         
         # 生成参数组合
-        combinations = self._generate_combinations()
+        param_combinations = self._generate_combinations()
+        total = len(param_combinations)
         
-        logger.info(f"开始网格搜索: {len(combinations)}组参数")
+        logger.info(f"开始敏感性分析，共{total}组参数组合")
         
-        results = []
-        for i, params in enumerate(combinations):
-            logger.info(f"进度: {i+1}/{len(combinations)}")
+        for i, params in enumerate(param_combinations):
+            if i % 10 == 0:
+                logger.info(f"进度: {i+1}/{total}")
+            
+            # 合并参数
+            full_params = {**base_params, **params}
             
             try:
-                # 合并参数
-                full_params = {**base_params, **params}
-                
                 # 运行回测
                 metrics = backtest_func(full_params)
-                
-                # 记录结果
-                result = {**params}
-                if isinstance(metrics, dict):
-                    result.update(metrics)
-                results.append(result)
-                
+                results.append({
+                    **params,
+                    **metrics
+                })
             except Exception as e:
-                logger.warning(f"参数组合{params}失败: {e}")
-                results.append({**params, 'error': str(e)})
+                logger.warning(f"参数组合{params}回测失败: {e}")
+                results.append({
+                    **params,
+                    'error': str(e)
+                })
+        
+        return pd.DataFrame(results)
+    
+    def run_single_param(
+        self,
+        param_name: str,
+        param_values: List[Any],
+        backtest_func: Callable,
+        base_params: Dict[str, Any] = None
+    ) -> pd.DataFrame:
+        """单参数敏感性分析
+        
+        Args:
+            param_name: 参数名
+            param_values: 参数值列表
+            backtest_func: 回测函数
+            base_params: 基础参数
+            
+        Returns:
+            各参数值的结果
+        """
+        base_params = base_params or {}
+        results = []
+        
+        for value in param_values:
+            params = {**base_params, param_name: value}
+            
+            try:
+                metrics = backtest_func(params)
+                results.append({
+                    param_name: value,
+                    **metrics
+                })
+            except Exception as e:
+                logger.warning(f"参数{param_name}={value}回测失败: {e}")
         
         return pd.DataFrame(results)
     
@@ -80,17 +120,17 @@ class SensitivityAnalysis:
             return [{}]
         
         # 获取参数名和值列表
-        keys = list(self.param_ranges.keys())
-        values = [self.param_ranges[k] for k in keys]
+        names = list(self.param_ranges.keys())
+        value_lists = [self.param_ranges[name] for name in names]
         
-        # 生成所有组合
+        # 生成笛卡尔积
         combinations = []
-        for combo in product(*values):
-            combinations.append(dict(zip(keys, combo)))
+        for values in product(*value_lists):
+            combinations.append(dict(zip(names, values)))
         
         return combinations
     
-    def find_optimal(
+    def find_optimal_params(
         self,
         results: pd.DataFrame,
         metric: str = 'sharpe_ratio',
@@ -104,18 +144,17 @@ class SensitivityAnalysis:
             maximize: 是否最大化
             
         Returns:
-            最优参数和结果
+            最优参数组合
         """
         if results.empty or metric not in results.columns:
             return {}
         
-        # 排除错误结果
-        valid = results[~results.get('error', pd.Series()).notna()]
+        # 过滤有效结果
+        valid = results[results[metric].notna()]
         
         if valid.empty:
             return {}
         
-        # 找最优
         if maximize:
             best_idx = valid[metric].idxmax()
         else:
@@ -123,102 +162,63 @@ class SensitivityAnalysis:
         
         return valid.loc[best_idx].to_dict()
     
-    def one_dim_sensitivity(
+    def find_top_params(
         self,
-        backtest_func: Callable,
-        param_name: str,
-        param_values: List[Any],
-        base_params: Dict = None
+        results: pd.DataFrame,
+        metric: str = 'sharpe_ratio',
+        top_n: int = 10
     ) -> pd.DataFrame:
-        """单参数敏感性分析
-        
-        Args:
-            backtest_func: 回测函数
-            param_name: 参数名
-            param_values: 参数值列表
-            base_params: 基础参数
-            
-        Returns:
-            敏感性分析结果
-        """
-        base_params = base_params or {}
-        
-        results = []
-        for value in param_values:
-            params = {**base_params, param_name: value}
-            
-            try:
-                metrics = backtest_func(params)
-                result = {param_name: value}
-                if isinstance(metrics, dict):
-                    result.update(metrics)
-                results.append(result)
-            except Exception as e:
-                logger.warning(f"{param_name}={value} 失败: {e}")
-        
-        return pd.DataFrame(results)
-    
-    def plot_sensitivity(
-        self,
-        results: pd.DataFrame,
-        param_name: str,
-        metric: str = 'sharpe_ratio'
-    ):
-        """绘制敏感性分析图
+        """找出Top N参数组合
         
         Args:
             results: 分析结果
-            param_name: 参数名
-            metric: 指标名
+            metric: 排序指标
+            top_n: 数量
+            
+        Returns:
+            Top N参数组合
         """
-        try:
-            import matplotlib.pyplot as plt
-            
-            fig, ax = plt.subplots(figsize=(10, 6))
-            
-            ax.plot(results[param_name], results[metric], 'b-o')
-            ax.set_xlabel(param_name)
-            ax.set_ylabel(metric)
-            ax.set_title(f'Sensitivity: {param_name} vs {metric}')
-            
-            plt.tight_layout()
-            plt.savefig(f'sensitivity_{param_name}.png')
-            plt.close()
-            
-            logger.info(f"敏感性图已保存: sensitivity_{param_name}.png")
-            
-        except Exception as e:
-            logger.warning(f"绘图失败: {e}")
+        if results.empty or metric not in results.columns:
+            return pd.DataFrame()
+        
+        return results.nlargest(top_n, metric)
     
-    def get_param_importance(
+    def analyze_sensitivity(
         self,
         results: pd.DataFrame,
         metric: str = 'sharpe_ratio'
-    ) -> pd.Series:
-        """计算参数重要性
-        
-        通过各参数变化对指标的影响程度衡量
+    ) -> pd.DataFrame:
+        """分析参数敏感性
         
         Args:
             results: 分析结果
-            metric: 目标指标
+            metric: 分析指标
             
         Returns:
-            参数重要性排序
+            各参数的敏感性统计
         """
         if results.empty:
-            return pd.Series()
+            return pd.DataFrame()
         
-        importance = {}
+        sensitivity = []
         
-        for param in self.param_ranges.keys():
-            if param not in results.columns:
+        for param_name in self.param_ranges.keys():
+            if param_name not in results.columns:
                 continue
             
-            # 计算该参数不同取值下指标的方差
-            grouped = results.groupby(param)[metric].mean()
-            variance = grouped.var()
+            # 按参数值分组计算指标均值
+            grouped = results.groupby(param_name)[metric].agg(['mean', 'std', 'min', 'max'])
             
-            importance[param] = variance
+            # 计算敏感性系数（变异系数）
+            cv = grouped['std'] / grouped['mean'].abs()
+            
+            sensitivity.append({
+                'param': param_name,
+                'mean': grouped['mean'].mean(),
+                'std': grouped['std'].mean(),
+                'min': grouped['min'].min(),
+                'max': grouped['max'].max(),
+                'sensitivity': cv.mean(),  # 敏感性系数
+            })
         
-        return pd.Series(importance).sort_values(ascending=False)
+        return pd.DataFrame(sensitivity).sort_values('sensitivity', ascending=False)

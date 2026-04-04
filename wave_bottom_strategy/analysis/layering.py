@@ -13,7 +13,7 @@ logger = get_logger('layering_analysis')
 class LayeringAnalysis:
     """分层分析
     
-    按因子分值分组，分析各组的表现差异
+    按因子分值分组，分析各组表现
     """
     
     def __init__(self, n_layers: int = 5):
@@ -31,32 +31,24 @@ class LayeringAnalysis:
             returns: 后续收益率
             
         Returns:
-            各层收益率统计
+            各层统计
         """
-        # 将得分分为n_layers层
-        try:
-            layers = pd.qcut(scores, self.n_layers, labels=False, duplicates='drop')
-        except ValueError:
-            # 数据不足时返回空
-            return pd.DataFrame()
+        # 分层
+        labels = [f'Layer{i+1}' for i in range(self.n_layers)]
+        layers = pd.qcut(scores, self.n_layers, labels=labels, duplicates='drop')
         
         results = []
-        unique_layers = layers.unique()
-        
-        for layer_id in sorted(unique_layers):
-            layer_mask = layers == layer_id
-            layer_returns = returns[layer_mask]
+        for layer in layers.unique():
+            mask = layers == layer
+            layer_returns = returns[mask]
             
-            if len(layer_returns) > 0:
-                results.append({
-                    'layer': int(layer_id) + 1,
-                    'count': len(layer_returns),
-                    'mean_return': layer_returns.mean(),
-                    'std_return': layer_returns.std(),
-                    'median_return': layer_returns.median(),
-                    'min_return': layer_returns.min(),
-                    'max_return': layer_returns.max(),
-                })
+            results.append({
+                'layer': layer,
+                'count': len(layer_returns),
+                'mean_return': layer_returns.mean(),
+                'std_return': layer_returns.std(),
+                'win_rate': (layer_returns > 0).mean()
+            })
         
         return pd.DataFrame(results)
     
@@ -66,97 +58,22 @@ class LayeringAnalysis:
         returns: pd.Series,
         factor_name: str
     ) -> pd.DataFrame:
-        """按单个因子值分层
-        
-        Args:
-            factor_values: 因子值
-            returns: 后续收益率
-            factor_name: 因子名称
-            
-        Returns:
-            各层收益率统计
-        """
-        result = self.layer_by_score(factor_values, returns)
-        result['factor'] = factor_name
-        return result
+        """按因子值分层"""
+        return self.layer_by_score(factor_values, returns)
     
-    def multi_factor_layering(
-        self,
-        factor_data: pd.DataFrame,
-        returns: pd.Series,
-        factor_names: List[str]
-    ) -> pd.DataFrame:
-        """多因子分层分析
+    def monotonicity_test(self, layer_result: pd.DataFrame) -> float:
+        """单调性检验
         
-        Args:
-            factor_data: 多因子数据
-            returns: 收益率
-            factor_names: 因子名称列表
-            
         Returns:
-            各因子分层结果
-        """
-        results = []
-        
-        for factor_name in factor_names:
-            if factor_name in factor_data.columns:
-                factor_values = factor_data[factor_name]
-                layer_result = self.layer_by_factor(factor_values, returns, factor_name)
-                results.append(layer_result)
-        
-        if results:
-            return pd.concat(results, ignore_index=True)
-        return pd.DataFrame()
-    
-    def calculate_ic(
-        self,
-        factor_values: pd.Series,
-        returns: pd.Series
-    ) -> float:
-        """计算IC（信息系数）
-        
-        Args:
-            factor_values: 因子值
-            returns: 收益率
-            
-        Returns:
-            IC值（秩相关系数）
-        """
-        # 使用Spearman秩相关
-        return factor_values.corr(returns, method='spearman')
-    
-    def calculate_ir(
-        self,
-        ic_series: pd.Series
-    ) -> float:
-        """计算IR（信息比率）
-        
-        Args:
-            ic_series: IC时间序列
-            
-        Returns:
-            IR值（IC均值/IC标准差）
-        """
-        if ic_series.std() == 0:
-            return 0.0
-        return ic_series.mean() / ic_series.std()
-    
-    def layer_return_spread(
-        self,
-        layer_result: pd.DataFrame
-    ) -> float:
-        """计算层间收益差
-        
-        Args:
-            layer_result: 分层结果
-            
-        Returns:
-            最高层与最低层收益差
+            单调性系数（IC）
         """
         if layer_result.empty:
             return 0.0
         
-        top_return = layer_result['mean_return'].max()
-        bottom_return = layer_result['mean_return'].min()
+        # Spearman相关系数
+        from scipy.stats import spearmanr
+        x = range(len(layer_result))
+        y = layer_result['mean_return'].values
         
-        return top_return - bottom_return
+        corr, _ = spearmanr(x, y)
+        return corr
