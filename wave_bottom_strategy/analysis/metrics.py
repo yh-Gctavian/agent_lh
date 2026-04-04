@@ -5,7 +5,7 @@ from typing import Dict
 import pandas as pd
 import numpy as np
 
-from wave_bottom_strategy.utils.logger import get_logger
+from utils.logger import get_logger
 
 logger = get_logger('performance_metrics')
 
@@ -16,14 +16,12 @@ class PerformanceMetrics:
     计算胜率、盈亏比、夏普比率等核心指标
     """
     
-    def __init__(self, returns: pd.Series = None, trade_returns: pd.Series = None):
-        """
-        Args:
-            returns: 日收益率序列
-            trade_returns: 每笔交易收益率序�?
-        """
+    def __init__(self, returns: pd.Series = None):
         self.returns = returns
-        self.trade_returns = trade_returns
+    
+    def set_returns(self, returns: pd.Series):
+        """设置收益率序列"""
+        self.returns = returns
     
     def win_rate(self) -> float:
         """计算胜率
@@ -31,11 +29,11 @@ class PerformanceMetrics:
         Returns:
             胜率（盈利交易占比）
         """
-        if self.trade_returns is None or len(self.trade_returns) == 0:
+        if self.returns is None or len(self.returns) == 0:
             return 0.0
         
-        winning = self.trade_returns[self.trade_returns > 0]
-        total = len(self.trade_returns[self.trade_returns != 0])
+        winning = self.returns[self.returns > 0]
+        total = len(self.returns[self.returns != 0])
         
         if total == 0:
             return 0.0
@@ -43,16 +41,16 @@ class PerformanceMetrics:
         return len(winning) / total
     
     def profit_loss_ratio(self) -> float:
-        """计算盈亏�?
+        """计算盈亏比
         
         Returns:
             平均盈利 / 平均亏损
         """
-        if self.trade_returns is None:
+        if self.returns is None:
             return 0.0
         
-        winning = self.trade_returns[self.trade_returns > 0]
-        losing = self.trade_returns[self.trade_returns < 0]
+        winning = self.returns[self.returns > 0]
+        losing = self.returns[self.returns < 0]
         
         avg_win = winning.mean() if len(winning) > 0 else 0
         avg_loss = abs(losing.mean()) if len(losing) > 0 else 0
@@ -66,7 +64,7 @@ class PerformanceMetrics:
         """计算夏普比率
         
         Args:
-            risk_free_rate: 无风险利率（年化�?
+            risk_free_rate: 无风险利率（年化）
             
         Returns:
             夏普比率
@@ -82,10 +80,10 @@ class PerformanceMetrics:
         return excess_returns.mean() / excess_returns.std() * np.sqrt(252)
     
     def max_drawdown(self) -> float:
-        """计算最大回�?
+        """计算最大回撤
         
         Returns:
-            最大回撤比例（负数�?
+            最大回撤比例（负数）
         """
         if self.returns is None or len(self.returns) == 0:
             return 0.0
@@ -97,10 +95,10 @@ class PerformanceMetrics:
         return drawdown.min()
     
     def annual_return(self) -> float:
-        """计算年化收益�?
+        """计算年化收益率
         
         Returns:
-            年化收益�?
+            年化收益率
         """
         if self.returns is None or len(self.returns) == 0:
             return 0.0
@@ -114,10 +112,10 @@ class PerformanceMetrics:
         return (1 + total_return) ** (252 / days) - 1
     
     def volatility(self) -> float:
-        """计算年化波动�?
+        """计算年化波动率
         
         Returns:
-            年化波动�?
+            年化波动率
         """
         if self.returns is None or len(self.returns) == 0:
             return 0.0
@@ -128,7 +126,7 @@ class PerformanceMetrics:
         """计算卡玛比率
         
         Returns:
-            年化收益 / 最大回�?
+            年化收益 / 最大回撤
         """
         max_dd = abs(self.max_drawdown())
         if max_dd == 0:
@@ -137,32 +135,31 @@ class PerformanceMetrics:
         return self.annual_return() / max_dd
     
     def sortino_ratio(self, risk_free_rate: float = 0.03) -> float:
-        """计算索提诺比�?
+        """计算索提诺比率
         
         Args:
-            risk_free_rate: 无风险利�?
+            risk_free_rate: 无风险利率
             
         Returns:
-            索提诺比�?
+            索提诺比率
         """
         if self.returns is None or len(self.returns) == 0:
             return 0.0
         
         excess_returns = self.returns - risk_free_rate / 252
-        downside_returns = excess_returns[excess_returns < 0]
+        downside_returns = self.returns[self.returns < 0]
         
         if len(downside_returns) == 0:
             return float('inf')
         
         downside_std = downside_returns.std()
-        
         if downside_std == 0:
             return 0.0
         
         return excess_returns.mean() / downside_std * np.sqrt(252)
     
     def get_all_metrics(self) -> Dict:
-        """获取所有指�?
+        """获取所有指标
         
         Returns:
             指标字典
@@ -189,13 +186,13 @@ class PerformanceMetrics:
         lines = [
             "=== 绩效指标摘要 ===",
             f"胜率: {metrics['win_rate']:.2%}",
-            f"盈亏�? {metrics['profit_loss_ratio']:.2f}",
+            f"盈亏比: {metrics['profit_loss_ratio']:.2f}",
             f"夏普比率: {metrics['sharpe_ratio']:.2f}",
-            f"最大回�? {metrics['max_drawdown']:.2%}",
+            f"最大回撤: {metrics['max_drawdown']:.2%}",
             f"年化收益: {metrics['annual_return']:.2%}",
             f"年化波动: {metrics['volatility']:.2%}",
             f"卡玛比率: {metrics['calmar_ratio']:.2f}",
-            f"索提诺比�? {metrics['sortino_ratio']:.2f}",
+            f"索提诺比率: {metrics['sortino_ratio']:.2f}",
         ]
         
         return "\n".join(lines)
