@@ -2,16 +2,13 @@
 """回测引擎"""
 
 from typing import Dict, List, Optional
-from datetime import date, timedelta
+from datetime import datetime
 import pandas as pd
-import numpy as np
 
 from .portfolio import Portfolio
 from .matcher import OrderMatcher, Order
 from .benchmark import Benchmark
 from selector.engine import SelectorEngine
-from data.loader import DataLoader
-from data.processor import DataProcessor
 from utils.logger import get_logger
 
 logger = get_logger('backtest_engine')
@@ -22,325 +19,185 @@ class BacktestEngine:
     
     def __init__(
         self,
-        selector: SelectorEngine = None,
-        initial_capital: float = 1_000_000.0,
-        benchmark_code: str = "000300",
-        max_positions: int = 10,
-        position_size: float = 0.1,  # 单只股票仓位比例
-        min_score: float = 70.0,
-        sell_days: int = 5,  # 最大持仓天数
-        stop_loss: float = -0.05,  # 止损比例
-        take_profit: float = 0.15  # 止盈比例
+        initial_capital: float = 1_000_000,
+        benchmark_code: str = "000300"
     ):
-        self.selector = selector or SelectorEngine()
         self.initial_capital = initial_capital
-        self.max_positions = max_positions
-        self.position_size = position_size
-        self.min_score = min_score
-        self.sell_days = sell_days
-        self.stop_loss = stop_loss
-        self.take_profit = take_profit
-        
-        # 初始化组件
+        self.selector = SelectorEngine()
         self.portfolio = Portfolio(initial_capital)
         self.matcher = OrderMatcher()
         self.benchmark = Benchmark(benchmark_code)
-        self.data_loader = DataLoader()
-        self.data_processor = DataProcessor()
-        
-        logger.info(f"回测引擎初始化: 初始资金{initial_capital}, 最大持仓{max_positions}")
     
     def run(
         self,
+        stock_data: Dict[str, pd.DataFrame],
         start_date: str,
-        end_date: str,
-        stock_pool: List[str] = None
+        end_date: str
     ) -> Dict:
         """运行回测
         
         Args:
-            start_date: 开始日期 (YYYY-MM-DD)
-            end_date: 结束日期 (YYYY-MM-DD)
-            stock_pool: 股票池
+            stock_data: {symbol: 日K线DataFrame}
+            start_date: 开始日期
+            end_date: 结束日期
             
         Returns:
             回测结果
         """
         logger.info(f"开始回测: {start_date} -> {end_date}")
         
-        # 1. 加载交易日历
-        trade_dates = self._get_trade_dates(start_date, end_date)
-        logger.info(f"交易日数: {len(trade_dates)}")
+        # 加载基准
+        self.benchmark.load_data(start_date, end_date)
         
-        # 2. 加载基准数据
-        self.benchmark.load_data(
-            start_date.replace('-', ''),
-            end_date.replace('-', '')
-        )
+        # 获取交易日列表
+        trade_dates = self._get_trade_dates(stock_data)
         
-        # 3. 加载股票池
-        if stock_pool is None:
-            stock_pool = self.data_loader.load_stock_pool('hs300')
-        
-        # 4. 预加载股票数据
-        stock_data = self._preload_stock_data(stock_pool, start_date, end_date)
-        
-        # 5. 主循环
         for i, trade_date in enumerate(trade_dates):
-            self._daily_process(trade_date, trade_dates, i, stock_data, stock_pool)
+            # 更新持仓价格
+            prices = self._get_prices(stock_data, trade_date)
+            self.portfolio.update_prices(prices)
             
-            # 记录每日状态
+            # 执行选股
+            result = self.selector.run(stock_data, trade_date)
+            buy_list = self.selector.select_top(result, 10)
+            
+            # 生成订单
+            orders = self._generate_orders(buy_list, prices, trade_date)
+            
+            # 次日撮合
+            if i + 1 < len(trade_dates):
+                next_date = trade_dates[i + 1]
+                next_prices = self._get_prices(stock_data, next_date)
+                orders = self.matcher.match(orders, next_prices, next_date)
+                
+                # 执行成交
+                self._execute_orders(orders)
+            
+            # 记录净值
             self.portfolio.record(trade_date)
         
-        # 6. 汇总结果
-        result = self._generate_result()
+        # 计算绩效
+        metrics = self._calculate_metrics()
         
-        logger.info("回测完成")
+        logger.info(f"回测完成: 收益率{metrics['total_return']:.2%}")
         
-        return result
+        return {
+            'metrics': metrics,
+            'history': self.portfolio.get_history_df(),
+            'trades': pd.DataFrame(self.portfolio.trades)
+        }
     
-    def _get_trade_dates(self, start: str, end: str) -> List[date]:
+    def _get_trade_dates(self, stock_data: Dict) -> List[str]:
         """获取交易日列表"""
-        dates = self.data_loader.load_trade_calendar(
-            start.replace('-', ''),
-            end.replace('-', '')
-        )
-        
-        if dates:
-            return [pd.to_datetime(d).date() for d in dates]
-        
-        # 如果获取失败，生成简单日历
-        start_dt = pd.to_datetime(start).date()
-        end_dt = pd.to_datetime(end).date()
-        
-        dates = []
-        current = start_dt
-        while current <= end_dt:
-            if current.weekday() < 5:  # 工作日
-                dates.append(current)
-            current += timedelta(days=1)
-        
-        return dates
+        all_dates = set()
+        for data in stock_data.values():
+            dates = data['trade_date'].tolist()
+            all_dates.update(dates)
+        return sorted(list(all_dates))
     
-    def _preload_stock_data(
-        self,
-        stock_pool: List[str],
-        start_date: str,
-        end_date: str
-    ) -> Dict[str, pd.DataFrame]:
-        """预加载股票数据"""
-        logger.info(f"预加载股票数据: {len(stock_pool)}只")
-        
-        data = {}
-        for symbol in stock_pool[:50]:  # 限制数量避免太慢
-            try:
-                df = self.data_loader.load_daily_data(
-                    symbol=symbol,
-                    start_date=start_date.replace('-', ''),
-                    end_date=end_date.replace('-', ''),
-                    adjust='qfq'
-                )
-                if not df.empty:
-                    data[symbol] = df
-            except Exception as e:
-                logger.debug(f"{symbol} 加载失败: {e}")
-        
-        logger.info(f"成功加载: {len(data)}只")
-        return data
-    
-    def _daily_process(
-        self,
-        trade_date: date,
-        trade_dates: List[date],
-        day_index: int,
-        stock_data: Dict[str, pd.DataFrame],
-        stock_pool: List[str]
-    ):
-        """每日处理
-        
-        Args:
-            trade_date: 当前交易日
-            trade_dates: 交易日列表
-            day_index: 当前索引
-            stock_data: 股票数据
-            stock_pool: 股票池
-        """
-        # 1. 更新持仓价格
-        self._update_positions_price(trade_date, stock_data)
-        
-        # 2. 检查卖出条件
-        sell_orders = self._check_sell_conditions(trade_date, trade_dates, day_index)
-        
-        # 3. 执行卖出
-        if sell_orders:
-            self._execute_sell(sell_orders, trade_date, stock_data)
-        
-        # 4. 选股
-        if self.portfolio.position_count < self.max_positions:
-            buy_candidates = self._select_stocks(trade_date, stock_pool)
-            
-            # 5. 执行买入
-            if buy_candidates:
-                self._execute_buy(buy_candidates, trade_date, stock_data)
-    
-    def _update_positions_price(
-        self,
-        trade_date: date,
-        stock_data: Dict[str, pd.DataFrame]
-    ):
-        """更新持仓价格"""
+    def _get_prices(self, stock_data: Dict, trade_date: str) -> Dict[str, float]:
+        """获取当日价格"""
         prices = {}
-        
-        for ts_code in self.portfolio.positions:
-            symbol = ts_code.split('.')[0]
-            if symbol in stock_data:
-                df = stock_data[symbol]
-                mask = df['trade_date'].dt.date == trade_date
-                if mask.any():
-                    prices[ts_code] = df.loc[mask, 'close'].iloc[0]
-        
-        self.portfolio.update_prices(prices)
+        for symbol, data in stock_data.items():
+            row = data[data['trade_date'] == trade_date]
+            if not row.empty:
+                prices[symbol] = row['close'].iloc[0]
+        return prices
     
-    def _check_sell_conditions(
+    def _generate_orders(
         self,
-        trade_date: date,
-        trade_dates: List[date],
-        day_index: int
+        buy_list: List[str],
+        prices: Dict[str, float],
+        trade_date: str
     ) -> List[Order]:
-        """检查卖出条件"""
-        sell_orders = []
+        """生成买入订单"""
+        orders = []
         
-        for ts_code, pos in list(self.portfolio.positions.items()):
-            should_sell = False
+        for symbol in buy_list:
+            if symbol not in prices:
+                continue
             
-            # 1. 止损
-            if pos.profit_pct <= self.stop_loss * 100:
-                should_sell = True
-                logger.debug(f"止损卖出: {ts_code}")
-            
-            # 2. 止盈
-            if pos.profit_pct >= self.take_profit * 100:
-                should_sell = True
-                logger.debug(f"止盈卖出: {ts_code}")
-            
-            # 3. 最大持仓天数
-            if day_index > 0:
-                hold_days = (trade_date - pos.buy_date).days
-                if hold_days >= self.sell_days:
-                    should_sell = True
-                    logger.debug(f"超时卖出: {ts_code}")
-            
-            if should_sell:
-                order = Order(
-                    ts_code=ts_code,
-                    direction='sell',
-                    shares=pos.shares,
-                    order_date=trade_date
-                )
-                sell_orders.append(order)
+            if self.portfolio.can_buy(symbol, prices[symbol]):
+                # 计算买入股数（单票10%仓位）
+                max_value = self.portfolio.total_value * 0.10
+                shares = int(max_value / prices[symbol] / 100) * 100  # 整手
+                
+                if shares > 0:
+                    orders.append(Order(
+                        ts_code=symbol,
+                        direction='buy',
+                        shares=shares,
+                        order_date=trade_date
+                    ))
         
-        return sell_orders
+        return orders
     
-    def _execute_sell(
-        self,
-        orders: List[Order],
-        trade_date: date,
-        stock_data: Dict[str, pd.DataFrame]
-    ):
-        """执行卖出"""
+    def _execute_orders(self, orders: List[Order]):
+        """执行成交订单"""
         for order in orders:
-            symbol = order.ts_code.split('.')[0]
-            if symbol in stock_data:
-                df = stock_data[symbol]
-                mask = df['trade_date'].dt.date == trade_date
-                if mask.any():
-                    price = df.loc[mask, 'close'].iloc[0]
-                    self.portfolio.sell(
-                        ts_code=order.ts_code,
-                        shares=order.shares,
-                        price=price,
-                        trade_date=trade_date
-                    )
-    
-    def _select_stocks(
-        self,
-        trade_date: date,
-        stock_pool: List[str]
-    ) -> List[str]:
-        """选股"""
-        try:
-            candidates = self.selector.get_buy_candidates(
-                trade_date=trade_date,
-                stock_pool=stock_pool,
-                top_n=self.max_positions - self.portfolio.position_count
-            )
-            return candidates
-        except Exception as e:
-            logger.warning(f"选股失败: {e}")
-            return []
-    
-    def _execute_buy(
-        self,
-        candidates: List[str],
-        trade_date: date,
-        stock_data: Dict[str, pd.DataFrame]
-    ):
-        """执行买入"""
-        for ts_code in candidates:
-            if self.portfolio.position_count >= self.max_positions:
-                break
+            if not order.filled:
+                continue
             
-            # 计算买入金额
-            buy_amount = self.portfolio.cash * self.position_size
-            
-            symbol = ts_code.split('.')[0]
-            if symbol in stock_data:
-                df = stock_data[symbol]
-                mask = df['trade_date'].dt.date == trade_date
-                if mask.any():
-                    price = df.loc[mask, 'close'].iloc[0]
-                    shares = int(buy_amount / price / 100) * 100  # 整手
-                    
-                    if shares > 0:
-                        self.portfolio.buy(
-                            ts_code=ts_code,
-                            shares=shares,
-                            price=price,
-                            trade_date=trade_date
-                        )
+            if order.direction == 'buy':
+                self.portfolio.buy(
+                    order.ts_code,
+                    order.shares,
+                    order.fill_price,
+                    order.fill_date
+                )
+                self.portfolio.cash -= order.commission
     
-    def _generate_result(self) -> Dict:
-        """生成回测结果"""
+    def _calculate_metrics(self) -> Dict:
+        """计算绩效指标"""
         history = self.portfolio.get_history_df()
-        trades = self.portfolio.get_trade_records_df()
         
-        # 计算绩效指标
-        if not history.empty and 'profit_pct' in history.columns:
-            returns = history['profit_pct'].diff() / 100
+        if history.empty:
+            return {}
+        
+        # 收益率序列
+        returns = history['total_value'].pct_change()
+        
+        # 年化收益
+        total_return = history['profit_pct'].iloc[-1]
+        days = len(history)
+        annual_return = (1 + total_return) ** (252 / days) - 1
+        
+        # 最大回撤
+        cummax = history['total_value'].cummax()
+        drawdown = (history['total_value'] - cummax) / cummax
+        max_drawdown = drawdown.min()
+        
+        # 夏普比率
+        sharpe = returns.mean() / returns.std() * (252 ** 0.5) if returns.std() > 0 else 0
+        
+        # 胜率
+        trades = pd.DataFrame(self.portfolio.trades)
+        if not trades.empty:
+            buy_trades = trades[trades['action'] == 'buy']
+            sell_trades = trades[trades['action'] == 'sell']
             
-            result = {
-                'initial_capital': self.initial_capital,
-                'final_capital': self.portfolio.total_value,
-                'total_return': self.portfolio.total_profit_pct,
-                'total_trades': len(trades),
-                'win_trades': len(trades[trades['profit'] > 0]) if not trades.empty else 0,
-                'history': history,
-                'trades': trades,
-                'positions': self.portfolio.get_positions_df()
-            }
+            # 计算盈亏
+            win_count = 0
+            total_trade_count = 0
             
-            # 基准对比
-            if not history.empty:
-                comparison = self.benchmark.compare(returns)
-                result['benchmark_comparison'] = comparison
+            for sell in sell_trades.to_dict('records'):
+                # 找对应买入
+                buy = buy_trades[buy_trades['ts_code'] == sell['ts_code']]
+                if not buy.empty:
+                    buy_price = buy['price'].iloc[-1]
+                    if sell['price'] > buy_price:
+                        win_count += 1
+                    total_trade_count += 1
+            
+            win_rate = win_count / total_trade_count if total_trade_count > 0 else 0
         else:
-            result = {
-                'initial_capital': self.initial_capital,
-                'final_capital': self.portfolio.total_value,
-                'total_return': 0,
-                'total_trades': 0,
-                'history': history,
-                'trades': trades
-            }
+            win_rate = 0
         
-        return result
+        return {
+            'total_return': total_return,
+            'annual_return': annual_return,
+            'max_drawdown': max_drawdown,
+            'sharpe_ratio': sharpe,
+            'win_rate': win_rate,
+            'trade_count': len(trades)
+        }
