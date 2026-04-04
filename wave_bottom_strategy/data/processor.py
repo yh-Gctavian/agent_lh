@@ -214,6 +214,33 @@ class DataProcessor:
         logger.info(f"{symbol} 数据验证完成: {len(df)}条")
         return df
     
+    def fill_missing_dates(
+        self,
+        df: pd.DataFrame,
+        trade_dates: List[str]
+    ) -> pd.DataFrame:
+        """填充缺失交易日
+        
+        Args:
+            df: 日K线数据
+            trade_dates: 完整交易日列表
+            
+        Returns:
+            填充后的数据
+        """
+        # 获取已有日期
+        existing_dates = set(df['trade_date'].dt.strftime('%Y-%m-%d'))
+        
+        # 找出缺失日期
+        missing_dates = [d for d in trade_dates if d not in existing_dates]
+        
+        if missing_dates:
+            logger.info(f"填充{len(missing_dates)}个缺失交易日")
+            # 用前一日数据填充（停牌处理）
+            # TODO: 实现填充逻辑
+        
+        return df
+    
     def process_all(
         self,
         df: pd.DataFrame,

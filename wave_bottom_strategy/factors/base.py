@@ -10,7 +10,7 @@ class Factor(ABC):
     """因子基类"""
     
     def __init__(self, params: Dict[str, Any] = None):
-        """初始化因�?
+        """初始化因子
         
         Args:
             params: 因子参数
@@ -20,13 +20,13 @@ class Factor(ABC):
     
     @abstractmethod
     def calculate(self, data: pd.DataFrame) -> pd.Series:
-        """计算因子�?
+        """计算因子值
         
         Args:
             data: 日K线数据，包含 open, high, low, close, volume 等列
             
         Returns:
-            因子值序�?
+            因子值序列
         """
         pass
     
@@ -36,15 +36,15 @@ class Factor(ABC):
         """因子权重
         
         Returns:
-            权重�?(0-1)
+            权重值 (0-1)
         """
         pass
     
     def validate_data(self, data: pd.DataFrame) -> bool:
-        """验证输入数据是否包含必要�?
+        """验证输入数据是否包含必要列
         
         Args:
-            data: 日K线数�?
+            data: 日K线数据
             
         Returns:
             是否有效
