@@ -1,15 +1,9 @@
 # -*- coding: utf-8 -*-
-"""分析模块"""
+"""Analysis module initialization"""
 
 from .metrics import PerformanceMetrics
 from .layering import LayeringAnalysis
-from .sensitivity import SensitivityAnalysis, DEFAULT_PARAM_RANGES
+from .sensitivity import SensitivityAnalysis
 from .reporter import ReportGenerator
 
-__all__ = [
-    'PerformanceMetrics',
-    'LayeringAnalysis', 
-    'SensitivityAnalysis',
-    'DEFAULT_PARAM_RANGES',
-    'ReportGenerator'
-]
+__all__ = ['PerformanceMetrics', 'LayeringAnalysis', 'SensitivityAnalysis', 'ReportGenerator']
