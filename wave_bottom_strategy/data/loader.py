@@ -15,7 +15,7 @@ from datetime import datetime
 import time
 import json
 
-from utils.logger import get_logger
+from ..utils.logger import get_logger
 
 logger = get_logger('data_loader')
 
