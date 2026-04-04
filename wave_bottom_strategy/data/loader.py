@@ -167,8 +167,10 @@ class DataLoader:
             # AKShare交易日历
             df = ak.tool_trade_date_hist_sina()
             
-            # 统一日期类型：将 trade_date 转换为字符串格式 (YYYYMMDD)
-            df['trade_date'] = df['trade_date'].astype(str).str.replace('-', '')
+            # 修复 BUG-002：健壮的日期类型转换
+            # AKShare可能返回整数(int)、字符串(str)或datetime类型
+            # 统一转换为 YYYYMMDD 格式的字符串
+            df['trade_date'] = pd.to_datetime(df['trade_date'], format='mixed').dt.strftime('%Y%m%d')
             
             # 过滤日期范围
             df = df[(df['trade_date'] >= start_date) & (df['trade_date'] <= end_date)]

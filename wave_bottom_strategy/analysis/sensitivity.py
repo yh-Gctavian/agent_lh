@@ -3,83 +3,106 @@
 
 from typing import Dict, List, Any, Callable
 import pandas as pd
+import itertools
+
+from utils.logger import get_logger
+
+logger = get_logger('sensitivity')
 
 
 class SensitivityAnalysis:
-    """参数敏感性分析
-    
-    测试不同参数组合下的策略表现
-    """
+    """参数敏感性分析"""
     
     def __init__(self, param_ranges: Dict[str, List[Any]]):
         """初始化
         
         Args:
-            param_ranges: 参数范围，如 {'kdj_n': [5, 9, 14], 'min_score': [50, 60, 70]}
+            param_ranges: 参数范围，如 {'kdj_n': [5, 9, 14]}
         """
         self.param_ranges = param_ranges
     
-    def run_analysis(
+    def grid_search(
         self,
         backtest_func: Callable,
-        base_params: Dict[str, Any]
+        base_params: Dict[str, Any] = None
     ) -> pd.DataFrame:
-        """运行敏感性分析
+        """网格搜索
         
         Args:
             backtest_func: 回测函数
             base_params: 基础参数
             
         Returns:
-            各参数组合的回测结果
+            各参数组合的结果
         """
         results = []
+        combinations = self._generate_combinations()
         
-        # 生成参数组合
-        param_combinations = self._generate_combinations()
+        logger.info(f"网格搜索: {len(combinations)}组参数")
         
-        for params in param_combinations:
-            # 合并参数
-            full_params = {**base_params, **params}
+        for i, params in enumerate(combinations):
+            logger.debug(f"进度: {i+1}/{len(combinations)}")
             
-            # 运行回测
             try:
+                full_params = {**(base_params or {}), **params}
                 metrics = backtest_func(full_params)
+                
                 results.append({
                     **params,
                     **metrics
                 })
             except Exception as e:
-                results.append({
-                    **params,
-                    'error': str(e)
-                })
+                logger.warning(f"参数{params}失败: {e}")
         
         return pd.DataFrame(results)
     
     def _generate_combinations(self) -> List[Dict]:
-        """生成参数组合
+        """生成参数组合"""
+        keys = list(self.param_ranges.keys())
+        values = list(self.param_ranges.values())
         
-        Returns:
-            参数组合列表
-        """
-        # TODO: 实现参数组合生成逻辑
-        # 使用 itertools.product 或递归
-        raise NotImplementedError
+        combinations = []
+        for combo in itertools.product(*values):
+            combinations.append(dict(zip(keys, combo)))
+        
+        return combinations
     
-    def find_optimal_params(
+    def find_optimal(
         self,
         results: pd.DataFrame,
-        metric: str = 'sharpe_ratio'
-    ) -> Dict:
+        metric: str = 'sharpe_ratio',
+        top_n: int = 5
+    ) -> pd.DataFrame:
         """找出最优参数
         
         Args:
             results: 分析结果
             metric: 优化指标
+            top_n: 返回数量
             
         Returns:
-            最优参数
+            最优参数组合
         """
-        best_row = results.loc[results[metric].idxmax()]
-        return best_row.to_dict()
+        sorted_df = results.sort_values(metric, ascending=False)
+        return sorted_df.head(top_n)
+    
+    def one_way_analysis(
+        self,
+        results: pd.DataFrame,
+        param_name: str,
+        metric: str = 'sharpe_ratio'
+    ) -> pd.DataFrame:
+        """单因素分析
+        
+        Args:
+            results: 结果
+            param_name: 参数名
+            metric: 指标
+            
+        Returns:
+            该参数各取值的平均表现
+        """
+        if param_name not in results.columns:
+            return pd.DataFrame()
+        
+        return results.groupby(param_name)[metric].agg(['mean', 'std', 'count'])

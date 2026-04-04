@@ -3,62 +3,50 @@
 
 from typing import Dict, Optional
 from pathlib import Path
-import pandas as pd
 from datetime import datetime
+import pandas as pd
+
+from utils.logger import get_logger
+
+logger = get_logger('reporter')
 
 
 class ReportGenerator:
-    """报告生成器
+    """报告生成器"""
     
-    生成回测分析报告（Markdown/HTML）
-    """
-    
-    def __init__(self, output_dir: Path):
-        self.output_dir = output_dir
+    def __init__(self, output_dir: Path = None):
+        self.output_dir = output_dir or Path('reports')
+        self.output_dir.mkdir(parents=True, exist_ok=True)
     
     def generate(
         self,
         metrics: Dict,
-        backtest_result: pd.DataFrame,
-        layer_result: Optional[pd.DataFrame] = None,
-        sensitivity_result: Optional[pd.DataFrame] = None,
+        backtest_result: Dict,
+        layer_result: pd.DataFrame = None,
         format: str = 'markdown'
     ) -> Path:
-        """生成报告
+        """生成报告"""
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         
-        Args:
-            metrics: 绩效指标
-            backtest_result: 回测结果
-            layer_result: 分层分析结果
-            sensitivity_result: 敏感性分析结果
-            format: 输出格式
-            
-        Returns:
-            报告文件路径
-        """
         if format == 'markdown':
-            content = self._generate_markdown(
-                metrics, backtest_result, layer_result, sensitivity_result
-            )
-            filename = f"backtest_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+            content = self._gen_markdown(metrics, backtest_result, layer_result)
+            filename = f"backtest_report_{timestamp}.md"
         else:
-            content = self._generate_html(
-                metrics, backtest_result, layer_result, sensitivity_result
-            )
-            filename = f"backtest_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+            content = self._gen_html(metrics, backtest_result, layer_result)
+            filename = f"backtest_report_{timestamp}.html"
         
-        output_path = self.output_dir / filename
-        output_path.write_text(content, encoding='utf-8')
-        return output_path
+        filepath = self.output_dir / filename
+        filepath.write_text(content, encoding='utf-8')
+        
+        logger.info(f"报告生成: {filepath}")
+        return filepath
     
-    def _generate_markdown(
+    def _gen_markdown(
         self,
         metrics: Dict,
-        backtest_result: pd.DataFrame,
-        layer_result: Optional[pd.DataFrame],
-        sensitivity_result: Optional[pd.DataFrame]
+        result: Dict,
+        layer: pd.DataFrame
     ) -> str:
-        """生成Markdown报告"""
         lines = [
             "# 波段抄底策略回测报告",
             "",
@@ -71,41 +59,42 @@ class ReportGenerator:
         ]
         
         for key, value in metrics.items():
-            lines.append(f"| {key} | {value:.4f} |")
+            if isinstance(value, float):
+                lines.append(f"| {key} | {value:.4f} |")
+            else:
+                lines.append(f"| {key} | {value} |")
         
         lines.extend([
             "",
-            "## 二、回测收益曲线",
+            "## 二、收益统计",
             "",
-            "（图表待生成）",
+            f"- 初始资金: {result.get('initial', 'N/A'):,.0f}",
+            f"- 最终资金: {result.get('final', 'N/A'):,.0f}",
+            f"- 总收益率: {result.get('total_return', 0)*100:.2f}%",
+            f"- 交易次数: {result.get('trades', 0)}",
             "",
         ])
         
-        if layer_result is not None:
+        if layer is not None and not layer.empty:
             lines.extend([
                 "## 三、分层分析",
                 "",
-                layer_result.to_markdown(),
+                layer.to_markdown(),
                 "",
             ])
         
-        if sensitivity_result is not None:
-            lines.extend([
-                "## 四、参数敏感性分析",
-                "",
-                sensitivity_result.to_markdown(),
-                "",
-            ])
+        lines.extend([
+            "---",
+            "*量化开发经理 (KkTTM7)*"
+        ])
         
         return "\n".join(lines)
     
-    def _generate_html(
+    def _gen_html(
         self,
         metrics: Dict,
-        backtest_result: pd.DataFrame,
-        layer_result: Optional[pd.DataFrame],
-        sensitivity_result: Optional[pd.DataFrame]
+        result: Dict,
+        layer: pd.DataFrame
     ) -> str:
-        """生成HTML报告"""
-        # TODO: 实现HTML报告生成
-        raise NotImplementedError
+        # 简化HTML生成
+        return f"<html><body><h1>回测报告</h1><pre>{metrics}</pre></body></html>"
