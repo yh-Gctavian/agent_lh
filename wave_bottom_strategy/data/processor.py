@@ -21,7 +21,7 @@ class DataProcessor:
     
     def __init__(self):
         self.st_stocks: Set[str] = set()
-        self.suspended_dates: dict = {}
+        self.suspended_dates: dict = {}  # {symbol: [dates]}
         self.delisted_stocks: Set[str] = set()
     
     def load_st_stocks(self) -> Set[str]:
@@ -32,6 +32,7 @@ class DataProcessor:
         """
         try:
             import akshare as ak
+            # 获取ST股票
             df = ak.stock_zh_a_st_em()
             self.st_stocks = set(df['代码'].tolist())
             logger.info(f"加载ST股票: {len(self.st_stocks)}只")
@@ -48,6 +49,7 @@ class DataProcessor:
         """
         try:
             import akshare as ak
+            # 获取已退市股票
             df = ak.stock_zh_a_hist_min_em(symbol="退市", adjust='')
             if not df.empty:
                 self.delisted_stocks = set(df['代码'].tolist())
@@ -67,9 +69,11 @@ class DataProcessor:
         Returns:
             是否为ST股票
         """
+        # 从代码判断
         if symbol in self.st_stocks:
             return True
         
+        # 从名称判断
         if name:
             for keyword in self.ST_KEYWORDS:
                 if keyword in name:
@@ -92,7 +96,7 @@ class DataProcessor:
             exclude_st: 是否剔除ST
             exclude_delisted: 是否剔除退市
             exclude_suspended: 是否剔除停牌
-            trade_date: 交易日期
+            trade_date: 交易日期（用于停牌过滤）
             
         Returns:
             过滤后的股票列表
@@ -115,9 +119,18 @@ class DataProcessor:
         return result
     
     def _filter_suspended(self, symbols: List[str], trade_date: str) -> List[str]:
-        """剔除停牌股票"""
+        """剔除停牌股票
+        
+        Args:
+            symbols: 股票列表
+            trade_date: 交易日期
+            
+        Returns:
+            过滤后的列表
+        """
         try:
             import akshare as ak
+            # 获取当日停牌信息
             df = ak.stock_tfp_em()
             suspended = set(df['代码'].tolist())
             result = [s for s in symbols if s not in suspended]
@@ -127,36 +140,98 @@ class DataProcessor:
             logger.warning(f"停牌过滤失败: {e}")
             return symbols
     
-    def mark_suspended(self, df: pd.DataFrame, symbol: str) -> pd.DataFrame:
-        """标记停牌日期"""
+    def mark_suspended(
+        self,
+        df: pd.DataFrame,
+        symbol: str
+    ) -> pd.DataFrame:
+        """标记停牌日期
+        
+        Args:
+            df: 日K线数据
+            symbol: 股票代码
+            
+        Returns:
+            标记后的数据
+        """
         df['is_suspended'] = False
-        df.loc[(df['volume'] == 0) | (df['amount'] == 0), 'is_suspended'] = True
+        
+        # 停牌特征：成交量=0且收盘价不变
+        df.loc[
+            (df['volume'] == 0) | (df['amount'] == 0),
+            'is_suspended'
+        ] = True
+        
         return df
     
-    def mark_st_status(self, df: pd.DataFrame, symbol: str, name: str = None) -> pd.DataFrame:
-        """标记ST状态"""
+    def mark_st_status(
+        self,
+        df: pd.DataFrame,
+        symbol: str,
+        name: str = None
+    ) -> pd.DataFrame:
+        """标记ST状态
+        
+        Args:
+            df: 日K线数据
+            symbol: 股票代码
+            name: 股票名称
+            
+        Returns:
+            标记后的数据
+        """
         df['is_st'] = self.is_st_stock(symbol, name)
         return df
     
-    def validate_data(self, df: pd.DataFrame, symbol: str) -> pd.DataFrame:
-        """验证数据完整性"""
+    def validate_data(
+        self,
+        df: pd.DataFrame,
+        symbol: str
+    ) -> pd.DataFrame:
+        """验证数据完整性
+        
+        Args:
+            df: 日K线数据
+            symbol: 股票代码
+            
+        Returns:
+            清理后的数据
+        """
         if df.empty:
             return df
         
+        # 删除缺失值
         df = df.dropna(subset=['open', 'high', 'low', 'close', 'volume'])
-        df = df[df['high'] >= df['low']]
-        df = df[df['high'] >= df['open']]
-        df = df[df['high'] >= df['close']]
-        df = df[df['low'] <= df['open']]
-        df = df[df['low'] <= df['close']]
-        df = df[df['volume'] >= 0]
+        
+        # 检查异常值
+        df = df[df['high'] >= df['low']]  # 最高价>=最低价
+        df = df[df['high'] >= df['open']]  # 最高价>=开盘价
+        df = df[df['high'] >= df['close']]  # 最高价>=收盘价
+        df = df[df['low'] <= df['open']]   # 最低价<=开盘价
+        df = df[df['low'] <= df['close']]  # 最低价<=收盘价
+        df = df[df['volume'] >= 0]         # 成交量>=0
         
         logger.info(f"{symbol} 数据验证完成: {len(df)}条")
         return df
     
-    def process_all(self, df: pd.DataFrame, symbol: str, name: str = None) -> pd.DataFrame:
-        """执行全部预处理"""
+    def process_all(
+        self,
+        df: pd.DataFrame,
+        symbol: str,
+        name: str = None
+    ) -> pd.DataFrame:
+        """执行全部预处理
+        
+        Args:
+            df: 日K线数据
+            symbol: 股票代码
+            name: 股票名称
+            
+        Returns:
+            处理后的数据
+        """
         df = self.validate_data(df, symbol)
         df = self.mark_suspended(df, symbol)
         df = self.mark_st_status(df, symbol, name)
+        
         return df
