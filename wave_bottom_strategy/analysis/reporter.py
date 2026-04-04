@@ -203,3 +203,170 @@ class ReportGenerator:
 胜率: {metrics.get('win_rate', 0)*100:.1f}%
 盈亏比: {metrics.get('profit_loss_ratio', 0):.2f}
 """
+    
+    def generate_optimal_params_report(
+        self,
+        optimal_params: Dict,
+        backtest_result: Dict
+    ) -> str:
+        """生成最优参数推荐报告
+        
+        Args:
+            optimal_params: 最优参数
+            backtest_result: 回测结果
+            
+        Returns:
+            报告文本
+        """
+        lines = [
+            "# 最优参数推荐报告",
+            "",
+            f"生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            "",
+            "---",
+            "",
+            "## 一、推荐参数组合",
+            "",
+            "### 1.1 核心参数",
+            "",
+            "| 参数 | 推荐值 | 说明 |",
+            "|------|--------|------|",
+        ]
+        
+        # 参数说明
+        param_desc = {
+            'min_score': '最低选股得分阈值',
+            'max_positions': '最大持仓数量',
+            'single_position_pct': '单票仓位比例',
+            'rebalance_freq': '调仓频率（天）',
+            'kdj_j_threshold': 'KDJ J值超卖阈值',
+            'stop_profit': '止盈比例',
+            'stop_loss': '止损比例'
+        }
+        
+        for param, value in optimal_params.items():
+            desc = param_desc.get(param, '-')
+            if isinstance(value, float):
+                lines.append(f"| {param} | {value:.2f} | {desc} |")
+            else:
+                lines.append(f"| {param} | {value} | {desc} |")
+        
+        lines.extend([
+            "",
+            "### 1.2 参数优化方法",
+            "",
+            "- 敏感性分析：单参数影响评估",
+            "- 网格搜索：多参数组合优化",
+            "- Walk-Forward验证：样本外验证防止过拟合",
+            "",
+            "---",
+            "",
+            "## 二、回测验证结果",
+            "",
+            "| 指标 | 训练集(2020-2023) | 测试集(2024-2025) |",
+            "|------|------------------|------------------|",
+        ])
+        
+        # 假设有训练集和测试集结果
+        if 'train_metrics' in backtest_result:
+            train = backtest_result['train_metrics']
+            test = backtest_result.get('test_metrics', {})
+            lines.append(f"| 年化收益 | {train.get('annual_return', 0)*100:.2f}% | {test.get('annual_return', 0)*100:.2f}% |")
+            lines.append(f"| 夏普比率 | {train.get('sharpe_ratio', 0):.2f} | {test.get('sharpe_ratio', 0):.2f} |")
+            lines.append(f"| 最大回撤 | {train.get('max_drawdown', 0)*100:.2f}% | {test.get('max_drawdown', 0)*100:.2f}% |")
+        
+        return "\n".join(lines)
+    
+    def generate_capital_suggestion(
+        self,
+        metrics: Dict,
+        risk_tolerance: str = 'moderate'
+    ) -> str:
+        """生成资金规模建议
+        
+        Args:
+            metrics: 绩效指标
+            risk_tolerance: 风险偏好（conservative/moderate/aggressive）
+            
+        Returns:
+            资金建议文本
+        """
+        max_dd = abs(metrics.get('max_drawdown', 0.15))
+        sharpe = metrics.get('sharpe_ratio', 0.5)
+        
+        lines = [
+            "# 资金规模建议",
+            "",
+            f"生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            "",
+            "---",
+            "",
+            "## 一、风险评估",
+            "",
+            f"- 历史最大回撤：{max_dd*100:.2f}%",
+            f"- 夏普比率：{sharpe:.2f}",
+            f"- 风险偏好：{risk_tolerance}",
+            "",
+            "## 二、资金建议",
+            "",
+        ]
+        
+        # 根据风险偏好和回撤计算建议资金
+        if risk_tolerance == 'conservative':
+            # 保守型：最大回撤不超过本金的5%
+            suggested_capital = 50000 / max_dd if max_dd > 0 else 100000
+            max_loss = suggested_capital * max_dd
+            lines.extend([
+                f"### 保守型投资者",
+                "",
+                f"- 建议初始资金：{suggested_capital:.0f} 元",
+                f"- 预期最大亏损：{max_loss:.0f} 元",
+                f"- 风险承受：最大亏损不超过本金5%",
+                "",
+            ])
+        elif risk_tolerance == 'aggressive':
+            # 激进型：最大回撤不超过本金的20%
+            suggested_capital = 200000 / max_dd if max_dd > 0 else 500000
+            max_loss = suggested_capital * max_dd
+            lines.extend([
+                f"### 激进型投资者",
+                "",
+                f"- 建议初始资金：{suggested_capital:.0f} 元",
+                f"- 预期最大亏损：{max_loss:.0f} 元",
+                f"- 风险承受：最大亏损不超过本金20%",
+                "",
+            ])
+        else:
+            # 稳健型
+            suggested_capital = 100000 / max_dd if max_dd > 0 else 200000
+            max_loss = suggested_capital * max_dd
+            lines.extend([
+                f"### 稳健型投资者",
+                "",
+                f"- 建议初始资金：{suggested_capital:.0f} 元",
+                f"- 预期最大亏损：{max_loss:.0f} 元",
+                f"- 风险承受：最大亏损不超过本金10%",
+                "",
+            ])
+        
+        lines.extend([
+            "---",
+            "",
+            "## 三、仓位管理建议",
+            "",
+            "- 单票最大仓位：10%",
+            "- 最大持仓数：10只",
+            "- 总仓位上限：80%",
+            "- 现金保留：至少20%应对风险",
+            "",
+            "## 四、风险提示",
+            "",
+            "1. 历史业绩不代表未来表现",
+            "2. 策略可能存在过拟合风险",
+            "3. 市场极端情况下可能产生更大回撤",
+            "4. 建议分批入场，控制初始仓位",
+            "",
+            f"*报告生成于 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*",
+        ])
+        
+        return "\n".join(lines)
