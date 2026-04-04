@@ -5,7 +5,7 @@ import argparse
 from pathlib import Path
 
 from config import settings, FACTOR_PARAMS, SELECTOR_PARAMS
-from utils.logger import get_logger
+from wave_bottom_strategy.utils.logger import get_logger
 
 
 logger = get_logger('wave_bottom', settings.log_level, settings.log_file)

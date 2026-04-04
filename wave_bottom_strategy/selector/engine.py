@@ -9,7 +9,7 @@ from .filter import StockFilter
 from .scorer import FactorScorer
 from .signal import SignalGenerator
 from data.loader import DataLoader
-from utils.logger import get_logger
+from wave_bottom_strategy.utils.logger import get_logger
 
 logger = get_logger('selector_engine')
 

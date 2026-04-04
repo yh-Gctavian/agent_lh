@@ -11,7 +11,7 @@ from .matcher import OrderMatcher, Order
 from .benchmark import Benchmark
 from selector.engine import SelectorEngine
 from data.loader import DataLoader
-from utils.logger import get_logger
+from wave_bottom_strategy.utils.logger import get_logger
 
 logger = get_logger('backtest_engine')
 

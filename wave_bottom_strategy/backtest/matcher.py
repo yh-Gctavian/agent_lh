@@ -14,7 +14,7 @@ class Order:
     shares: int        # 股数
     order_date: date   # 下单日期
     
-    # 成交信息
+    # 成交信息（撮合后填充）
     filled: bool = False
     fill_price: float = 0.0
     fill_date: date = None
@@ -24,17 +24,17 @@ class OrderMatcher:
     """订单撮合器
     
     费用规则：
-    - 买入佣金: 0.03%
-    - 卖出佣金: 0.03% + 印花税 0.1% = 0.13%
-    - 滑点: 0.1%
+    - 买入费率：0.03%
+    - 卖出费率：0.13%（含印花税0.1%）
+    - 滑点：0.1%
     """
     
     def __init__(
         self,
-        buy_commission: float = 0.0003,   # 买入佣金 0.03%
-        sell_commission: float = 0.0013,  # 卖出佣金+印花税 0.13%
-        slippage: float = 0.001,          # 滑点 0.1%
-        min_commission: float = 5.0       # 最低佣金
+        buy_commission: float = 0.0003,   # 买入佣金0.03%
+        sell_commission: float = 0.0013,  # 卖出佣金0.13%（含印花税）
+        slippage: float = 0.001,          # 滑点0.1%
+        min_commission: float = 5.0       # 最低佣金5元
     ):
         self.buy_commission = buy_commission
         self.sell_commission = sell_commission
@@ -44,99 +44,83 @@ class OrderMatcher:
     def match(
         self,
         orders: List[Order],
-        next_day_prices: Dict[str, float]
+        prices: Dict[str, float]
     ) -> List[Order]:
         """撮合订单（次日开盘价成交）
         
         Args:
             orders: 订单列表
-            next_day_prices: 次日开盘价 {ts_code: price}
+            prices: 开盘价 {ts_code: price}
             
         Returns:
             撮合后的订单列表
         """
         for order in orders:
-            ts_code = order.ts_code
-            
-            if ts_code not in next_day_prices:
-                # 无法获取价格，订单失败
+            if order.ts_code not in prices:
                 order.filled = False
                 continue
             
-            base_price = next_day_prices[ts_code]
+            base_price = prices[order.ts_code]
             
-            # 计算滑点后价格
+            # 应用滑点
             if order.direction == 'buy':
                 # 买入：价格上浮
-                order.fill_price = base_price * (1 + self.slippage)
+                fill_price = base_price * (1 + self.slippage)
             else:
                 # 卖出：价格下浮
-                order.fill_price = base_price * (1 - self.slippage)
+                fill_price = base_price * (1 - self.slippage)
             
+            order.fill_price = fill_price
             order.filled = True
-            order.fill_date = order.order_date  # 实际成交日期应为次日
+            order.fill_date = order.order_date  # 次日
         
         return orders
     
-    def calculate_total_cost(self, order: Order) -> Dict[str, float]:
-        """计算订单总成本
+    def calculate_trade_cost(
+        self,
+        direction: str,
+        amount: float
+    ) -> Dict[str, float]:
+        """计算交易成本
         
         Args:
-            order: 已成交订单
+            direction: 买卖方向
+            amount: 成交金额
             
         Returns:
-            成本明细
+            费用明细
         """
-        if not order.filled:
-            return {}
-        
-        amount = order.shares * order.fill_price
-        
-        if order.direction == 'buy':
+        if direction == 'buy':
             commission = max(amount * self.buy_commission, self.min_commission)
-            slippage_cost = amount * self.slippage
-            total_cost = amount + commission + slippage_cost
+            stamp_duty = 0
         else:
             commission = max(amount * self.sell_commission, self.min_commission)
-            slippage_cost = amount * self.slippage
-            total_cost = commission + slippage_cost  # 卖出时从收入中扣除
-            total_cost = -total_cost  # 负数表示费用
+            stamp_duty = amount * 0.001  # 印花税0.1%
+        
+        slippage_cost = amount * self.slippage
         
         return {
-            'amount': amount,
-            'commission': commission if order.direction == 'buy' else -commission,
-            'slippage': slippage_cost if order.direction == 'buy' else -slippage_cost,
-            'total': total_cost if order.direction == 'buy' else amount + total_cost
+            'commission': commission,
+            'stamp_duty': stamp_duty,
+            'slippage': slippage_cost,
+            'total_cost': commission + stamp_duty + slippage_cost
         }
     
-    def get_buy_amount(self, shares: int, price: float) -> float:
-        """计算买入所需金额（含费用）
+    def get_executed_price(
+        self,
+        base_price: float,
+        direction: str
+    ) -> float:
+        """获取实际成交价（含滑点）
         
         Args:
-            shares: 股数
-            price: 价格
+            base_price: 基准价格
+            direction: 买卖方向
             
         Returns:
-            总金额
+            成交价格
         """
-        amount = shares * price
-        slippage_amount = amount * self.slippage
-        commission = max(amount * self.buy_commission, self.min_commission)
-        
-        return amount + slippage_amount + commission
-    
-    def get_sell_amount(self, shares: int, price: float) -> float:
-        """计算卖出所得金额（扣除费用）
-        
-        Args:
-            shares: 股数
-            price: 价格
-            
-        Returns:
-            实得金额
-        """
-        amount = shares * price
-        slippage_amount = amount * self.slippage
-        commission = max(amount * self.sell_commission, self.min_commission)
-        
-        return amount - slippage_amount - commission
+        if direction == 'buy':
+            return base_price * (1 + self.slippage)
+        else:
+            return base_price * (1 - self.slippage)

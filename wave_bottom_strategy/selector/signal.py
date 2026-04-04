@@ -4,7 +4,7 @@
 from typing import List
 import pandas as pd
 
-from utils.logger import get_logger
+from wave_bottom_strategy.utils.logger import get_logger
 
 logger = get_logger('signal_generator')
 
