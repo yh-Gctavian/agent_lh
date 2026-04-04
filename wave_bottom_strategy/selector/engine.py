@@ -22,7 +22,7 @@ class SelectorEngine:
     def run(self, trade_date: date, stock_pool: List[str] = None, 
             top_n: int = 10, min_score: float = 60.0) -> pd.DataFrame:
         """执行选股"""
-        logger.info(f"选股执行: {trade_date}")
+        logger.info("选股执行: %s", trade_date)
         
         results = []
         if stock_pool:
