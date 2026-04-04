@@ -76,12 +76,12 @@ class DataLoader:
             if pool_name == 'hs300':
                 # 沪深300成分股
                 df = ak.index_stock_cons_weight_csindex(symbol='000300')
-                return df['成分券代码'].tolist()
+                return self._extract_stock_codes(df)
             
             elif pool_name == 'zz500':
                 # 中证500成分股
                 df = ak.index_stock_cons_weight_csindex(symbol='000905')
-                return df['成分券代码'].tolist()
+                return self._extract_stock_codes(df)
             
             elif pool_name == 'all_a':
                 # 全A股列表
@@ -95,6 +95,32 @@ class DataLoader:
         except Exception as e:
             logger.error(f"加载股票池失败: {pool_name}, {e}")
             return []
+    
+    def _extract_stock_codes(self, df: pd.DataFrame) -> List[str]:
+        """从指数成分股DataFrame中提取股票代码（兼容多种列名）
+        
+        修复 BUG-001：AKShare API返回列名可能不同，需兼容处理
+        - 成分券代码（新版本）
+        - 成分股代码（旧版本）
+        - code（其他情况）
+        
+        Args:
+            df: 指数成分股DataFrame
+            
+        Returns:
+            股票代码列表
+        """
+        # 尝试多种可能的列名
+        possible_columns = ['成分券代码', '成分股代码', 'code', '股票代码', 'symbol']
+        
+        for col in possible_columns:
+            if col in df.columns:
+                logger.info(f"使用列名 '{col}' 提取股票代码")
+                return df[col].tolist()
+        
+        # 如果都不匹配，记录错误并返回空列表
+        logger.error(f"无法找到股票代码列，可用列：{df.columns.tolist()}")
+        raise KeyError(f"无法找到股票代码列，可用列：{df.columns.tolist()}")
     
     def load_stock_basic(self) -> pd.DataFrame:
         """加载股票基本信息
