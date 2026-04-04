@@ -1,41 +1,55 @@
 # -*- coding: utf-8 -*-
-"""Factor scorer module"""
+"""因子打分器"""
 
-from typing import List, Dict
+from typing import List
 import pandas as pd
+import logging
 
-from factors.kdj import KDJFactor
-from factors.ma import MAFactor
-from factors.volume import VolumeFactor
-from factors.rsi import RSIFactor
-from factors.macd import MACDFactor
-from factors.bollinger import BollingerFactor
+from wave_bottom_strategy.factors.kdj import KDJFactor
+from wave_bottom_strategy.factors.ma import MAFactor
+from wave_bottom_strategy.factors.volume import VolumeFactor
+from wave_bottom_strategy.factors.rsi import RSIFactor
+from wave_bottom_strategy.factors.macd import MACDFactor
+from wave_bottom_strategy.factors.bollinger import BollingerFactor
+
+logger = logging.getLogger('factor_scorer')
 
 
 class FactorScorer:
-    """Factor scorer - Calculate 6 factors and weighted score"""
+    """因子打分器"""
     
     def __init__(self):
         self.factors = [
-            KDJFactor(), VolumeFactor(), MAFactor(),
-            RSIFactor(), MACDFactor(), BollingerFactor()
+            KDJFactor(),
+            MAFactor(),
+            VolumeFactor(),
+            RSIFactor(),
+            MACDFactor(),
+            BollingerFactor(),
         ]
     
     def score_stock(self, data: pd.DataFrame) -> pd.DataFrame:
-        """Score a single stock"""
+        """对股票评分
+        
+        Args:
+            data: 日K线数据
+            
+        Returns:
+            评分结果DataFrame
+        """
         result = pd.DataFrame()
         result['trade_date'] = data['trade_date'] if 'trade_date' in data.columns else data.index
         
-        total_score = pd.Series(0.0, index=data.index)
-        
+        # 计算各因子得分
+        total_score = 0.0
         for factor in self.factors:
             try:
                 factor_data = factor.calculate(data)
-                score = factor.get_score(factor_data)
-                result['%s_score' % factor.name] = score
-                total_score = total_score + score * factor.weight
+                if not factor_data.empty:
+                    score = factor.get_score(factor_data)
+                    total_score += score.mean() * factor.weight
             except Exception as e:
-                pass
+                logger.warning(f"因子 {factor.name} 计算失败: {e}")
         
         result['total_score'] = total_score
         return result
