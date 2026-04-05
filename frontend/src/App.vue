@@ -1,154 +1,116 @@
 <template>
-  <div class="dashboard">
+  <div class="app-container">
     <el-container>
-      <el-header class="header">
-        <h1>Wave Bottom Strategy Dashboard</h1>
-      </el-header>
-      <el-main>
-        <!-- Core Metrics Cards -->
-        <el-row :gutter="20" class="metrics-row">
-          <el-col :span="6">
-            <el-card class="metric-card">
-              <div class="metric-title">Total Return</div>
-              <div class="metric-value positive">+45.8%</div>
-            </el-card>
-          </el-col>
-          <el-col :span="6">
-            <el-card class="metric-card">
-              <div class="metric-title">Win Rate</div>
-              <div class="metric-value">68.5%</div>
-            </el-card>
-          </el-col>
-          <el-col :span="6">
-            <el-card class="metric-card">
-              <div class="metric-title">Max Drawdown</div>
-              <div class="metric-value negative">-12.3%</div>
-            </el-card>
-          </el-col>
-          <el-col :span="6">
-            <el-card class="metric-card">
-              <div class="metric-title">Sharpe Ratio</div>
-              <div class="metric-value">1.85</div>
-            </el-card>
-          </el-col>
-        </el-row>
+      <!-- Sidebar -->
+      <el-aside width="220px" class="sidebar">
+        <div class="logo">
+          <h2>波段抄底策略</h2>
+        </div>
+        <el-menu
+          :default-active="activeMenu"
+          router
+          class="menu"
+        >
+          <el-menu-item index="/">
+            <el-icon><Odometer /></el-icon>
+            <span>控制台</span>
+          </el-menu-item>
+          <el-menu-item index="/stocks">
+            <el-icon><List /></el-icon>
+            <span>股票列表</span>
+          </el-menu-item>
+          <el-menu-item index="/backtest">
+            <el-icon><TrendCharts /></el-icon>
+            <span>回测管理</span>
+          </el-menu-item>
+          <el-menu-item index="/layering">
+            <el-icon><DataAnalysis /></el-icon>
+            <span>分层分析</span>
+          </el-menu-item>
+          <el-menu-item index="/settings">
+            <el-icon><Setting /></el-icon>
+            <span>参数配置</span>
+          </el-menu-item>
+        </el-menu>
+        
+        <!-- Factor Weight Summary -->
+        <div class="factor-summary">
+          <div class="summary-title">因子权重</div>
+          <div class="factor-list">
+            <div class="factor-item" v-for="(weight, factor) in factorWeights" :key="factor">
+              <span class="factor-name">{{ factor }}</span>
+              <span class="factor-weight">{{ weight }}%</span>
+            </div>
+          </div>
+        </div>
+      </el-aside>
 
-        <!-- Equity Curve Chart -->
-        <el-card class="chart-card">
-          <template #header>
-            <span>Equity Curve</span>
-          </template>
-          <div ref="equityChart" class="chart-container"></div>
-        </el-card>
+      <!-- Main Content -->
+      <el-container>
+        <el-header class="header">
+          <div class="header-left">
+            <span class="page-title">{{ pageTitle }}</span>
+          </div>
+          <div class="header-right">
+            <el-button type="primary" size="small" @click="refreshData">
+              <el-icon><Refresh /></el-icon>
+              刷新数据
+            </el-button>
+          </div>
+        </el-header>
 
-        <!-- Today's Signals -->
-        <el-card class="signals-card">
-          <template #header>
-            <span>Today's Signals</span>
-          </template>
-          <el-table :data="signals" style="width: 100%">
-            <el-table-column prop="code" label="Code" width="120" />
-            <el-table-column prop="name" label="Name" width="150" />
-            <el-table-column prop="score" label="Score" width="100">
-              <template #default="scope">
-                <el-tag :type="scope.row.score >= 70 ? 'success' : 'warning'">
-                  {{ scope.row.score }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="signal" label="Signal" width="100">
-              <template #default="scope">
-                <el-tag :type="scope.row.signal === 'BUY' ? 'success' : 'danger'">
-                  {{ scope.row.signal }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="kdj" label="KDJ J" width="100" />
-            <el-table-column prop="volume" label="Volume Ratio" width="120" />
-            <el-table-column prop="price" label="Price" width="100" />
-          </el-table>
-        </el-card>
-      </el-main>
+        <el-main class="main">
+          <router-view />
+        </el-main>
+      </el-container>
     </el-container>
   </div>
 </template>
 
 <script>
-import { ref, onMounted } from 'vue'
-import * as echarts from 'echarts'
+import { ref, computed } from 'vue'
+import { useRoute } from 'vue-router'
+import { Odometer, List, TrendCharts, DataAnalysis, Setting, Refresh } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 
 export default {
   name: 'App',
+  components: {
+    Odometer,
+    List,
+    TrendCharts,
+    DataAnalysis,
+    Setting,
+    Refresh
+  },
   setup() {
-    const equityChart = ref(null)
+    const route = useRoute()
     
-    const signals = ref([
-      { code: '000001', name: 'Ping An Bank', score: 85, signal: 'BUY', kdj: 15.2, volume: 1.8, price: 12.35 },
-      { code: '000002', name: 'Vanke A', score: 78, signal: 'BUY', kdj: 18.5, volume: 2.1, price: 8.92 },
-      { code: '600036', name: 'CMB', score: 72, signal: 'BUY', kdj: 22.3, volume: 1.5, price: 32.45 },
-      { code: '600519', name: 'Kweichow Moutai', score: 65, signal: 'HOLD', kdj: 28.7, volume: 0.9, price: 1685.00 },
-    ])
-
-    onMounted(() => {
-      initEquityChart()
+    const factorWeights = ref({
+      KDJ: 45,
+      成交量: 15,
+      均线: 15,
+      RSI: 10,
+      MACD: 10,
+      布林带: 5
     })
 
-    const initEquityChart = () => {
-      const chart = echarts.init(equityChart.value, 'dark')
-      
-      const dates = []
-      const values = []
-      const baseValue = 1000000
-      
-      for (let i = 0; i < 365; i++) {
-        const date = new Date(2024, 0, i + 1)
-        dates.push(date.toISOString().slice(0, 10))
-        const change = 1 + (Math.random() - 0.45) * 0.02
-        const lastValue = values.length > 0 ? values[values.length - 1] : baseValue
-        values.push(Math.round(lastValue * change))
-      }
+    const activeMenu = computed(() => route.path)
+    
+    const pageTitle = computed(() => {
+      return route.meta?.title || '波段抄底'
+    })
 
-      const option = {
-        backgroundColor: 'transparent',
-        tooltip: {
-          trigger: 'axis',
-          backgroundColor: 'rgba(30, 30, 40, 0.9)',
-          borderColor: '#409EFF',
-          textStyle: { color: '#fff' }
-        },
-        xAxis: {
-          type: 'category',
-          data: dates,
-          axisLine: { lineStyle: { color: '#666' } },
-          axisLabel: { color: '#999' }
-        },
-        yAxis: {
-          type: 'value',
-          axisLine: { lineStyle: { color: '#666' } },
-          axisLabel: { color: '#999', formatter: '{value}' },
-          splitLine: { lineStyle: { color: '#333' } }
-        },
-        series: [{
-          data: values,
-          type: 'line',
-          smooth: true,
-          symbol: 'none',
-          lineStyle: { color: '#409EFF', width: 2 },
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: 'rgba(64, 158, 255, 0.3)' },
-              { offset: 1, color: 'rgba(64, 158, 255, 0.05)' }
-            ])
-          }
-        }],
-        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true }
-      }
-
-      chart.setOption(option)
-      window.addEventListener('resize', () => chart.resize())
+    const refreshData = () => {
+      ElMessage.success('数据已刷新')
     }
 
-    return { equityChart, signals }
+    return {
+      factorWeights,
+      activeMenu,
+      pageTitle,
+      refreshData
+    }
   }
 }
 </script>
@@ -160,105 +122,103 @@ export default {
   box-sizing: border-box;
 }
 
-body {
-  background-color: #1a1a2e;
-  color: #e0e0e0;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+html, body, #app {
+  height: 100%;
+  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', Arial, sans-serif;
 }
 
-.dashboard {
-  min-height: 100vh;
-  background-color: #1a1a2e;
+.app-container {
+  height: 100%;
 }
 
-.header {
-  background-color: #16213e;
-  display: flex;
-  align-items: center;
-  padding: 0 20px;
-  border-bottom: 1px solid #0f3460;
+.el-container {
+  height: 100%;
 }
 
-.header h1 {
-  color: #409EFF;
-  font-size: 24px;
-  font-weight: 500;
+.sidebar {
+  background: #304156;
+  color: #fff;
 }
 
-.metrics-row {
-  margin-bottom: 20px;
-}
-
-.metric-card {
-  background-color: #16213e !important;
-  border: 1px solid #0f3460;
+.logo {
+  height: 60px;
+  line-height: 60px;
   text-align: center;
-  padding: 10px;
+  background: #263445;
 }
 
-.metric-card .el-card__body {
-  padding: 20px;
+.logo h2 {
+  color: #fff;
+  font-size: 16px;
+  margin: 0;
 }
 
-.metric-title {
-  color: #999;
-  font-size: 14px;
+.menu {
+  border-right: none;
+  background: #304156;
+}
+
+.el-menu-item {
+  color: #bfcbd9;
+}
+
+.el-menu-item:hover,
+.el-menu-item.is-active {
+  background: #263445;
+  color: #409EFF;
+}
+
+.factor-summary {
+  padding: 15px;
+  margin-top: 20px;
+}
+
+.summary-title {
+  color: #bfcbd9;
+  font-size: 12px;
   margin-bottom: 10px;
 }
 
-.metric-value {
-  font-size: 28px;
-  font-weight: bold;
-  color: #409EFF;
+.factor-list {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  padding: 10px;
 }
 
-.metric-value.positive {
-  color: #67C23A;
+.factor-item {
+  display: flex;
+  justify-content: space-between;
+  color: #fff;
+  font-size: 12px;
+  margin-bottom: 8px;
 }
 
-.metric-value.negative {
-  color: #F56C6C;
+.factor-item:last-child {
+  margin-bottom: 0;
 }
 
-.chart-card, .signals-card {
-  background-color: #16213e !important;
-  border: 1px solid #0f3460;
-  margin-bottom: 20px;
+.header {
+  background: #fff;
+  border-bottom: 1px solid #dcdfe6;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 20px;
 }
 
-.chart-card .el-card__header, .signals-card .el-card__header {
-  background-color: #0f3460;
-  color: #e0e0e0;
-  padding: 15px 20px;
+.header-left {
+  font-size: 18px;
+  color: #303133;
 }
 
-.chart-container {
-  width: 100%;
-  height: 400px;
+.header-right {
+  display: flex;
+  gap: 10px;
 }
 
-.el-table {
-  background-color: transparent !important;
-}
-
-.el-table th.el-table__cell {
-  background-color: #0f3460 !important;
-  color: #e0e0e0 !important;
-}
-
-.el-table td.el-table__cell, .el-table th.el-table__cell {
-  border-bottom: 1px solid #333 !important;
-}
-
-.el-table tr {
-  background-color: transparent !important;
-}
-
-.el-table--enable-row-hover .el-table__body tr:hover > td.el-table__cell {
-  background-color: rgba(64, 158, 255, 0.1) !important;
-}
-
-.el-table {
-  color: #e0e0e0 !important;
+.main {
+  background: #f5f7fa;
+  padding: 0;
+  overflow: auto;
 }
 </style>
