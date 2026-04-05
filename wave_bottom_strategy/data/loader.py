@@ -255,10 +255,29 @@ class DataLoader:
             return []
     
     def _extract_stock_codes(self, df: pd.DataFrame) -> List[str]:
-        """从DataFrame提取股票代码"""
-        for col in ['成分股代码', '代码', 'code', 'symbol']:
+        """从DataFrame提取股票代码
+        
+        注意：AKShare不同接口返回的列名可能不同：
+        - index_stock_cons_weight_csindex: '成分券代码'
+        - index_stock_cons: '成分股代码'
+        """
+        # 支持多种列名格式
+        possible_cols = [
+            '成分券代码',   # AKShare index_stock_cons_weight_csindex 返回
+            '成分股代码',   # AKShare index_stock_cons 返回
+            '代码',
+            'code',
+            'symbol',
+            '股票代码'
+        ]
+        
+        for col in possible_cols:
             if col in df.columns:
-                return df[col].astype(str).str.zfill(6).tolist()
+                codes = df[col].astype(str).str.zfill(6).tolist()
+                logger.info(f"从列 '{col}' 提取到 {len(codes)} 个股票代码")
+                return codes
+        
+        logger.warning(f"未找到股票代码列，可用列: {df.columns.tolist()}")
         return []
     
     def _standardize_columns(self, df: pd.DataFrame) -> pd.DataFrame:
