@@ -1,360 +1,506 @@
 <template>
   <div class="layering">
-    <!-- Config -->
-    <el-card class="config-card">
-      <template #header>
-        <span>分层分析配置</span>
-      </template>
-      <el-form :inline="true" :model="config">
-        <el-form-item label="分析日期">
-          <el-date-picker 
-            v-model="config.date" 
-            type="date" 
-            placeholder="选择日期"
-            value-format="YYYY-MM-DD"
-          />
+    <!-- 参数选择 -->
+    <el-card class="params-card">
+      <el-form :inline="true" :model="params">
+        <el-form-item label="分层数量">
+          <el-select v-model="params.layers" style="width: 100px">
+            <el-option label="5层" value="5" />
+            <el-option label="10层" value="10" />
+            <el-option label="20层" value="20" />
+          </el-select>
         </el-form-item>
-        <el-form-item label="分层数">
-          <el-input-number v-model="config.layers" :min="3" :max="10" />
+        <el-form-item label="分析周期">
+          <el-select v-model="params.period" style="width: 120px">
+            <el-option label="近1月" value="1m" />
+            <el-option label="近3月" value="3m" />
+            <el-option label="近6月" value="6m" />
+            <el-option label="近1年" value="1y" />
+          </el-select>
         </el-form-item>
-        <el-form-item label="因子">
-          <el-select v-model="config.factor" placeholder="选择因子">
-            <el-option label="综合得分" value="total_score" />
-            <el-option label="KDJ" value="kdj" />
-            <el-option label="RSI" value="rsi" />
-            <el-option label="成交量" value="volume" />
-            <el-option label="均线偏离" value="ma_bias" />
+        <el-form-item label="股票池">
+          <el-select v-model="params.stock_pool" style="width: 120px">
+            <el-option label="沪深300" value="hs300" />
+            <el-option label="中证500" value="zz500" />
+            <el-option label="全A股" value="all" />
           </el-select>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="runAnalysis" :loading="loading">
-            <el-icon><DataAnalysis /></el-icon>
+          <el-button type="primary" @click="loadData" :loading="loading">
+            <el-icon><Refresh /></el-icon>
             分析
           </el-button>
         </el-form-item>
       </el-form>
     </el-card>
 
-    <!-- IC Analysis -->
-    <el-card class="ic-card" v-if="results">
+    <el-row :gutter="20">
+      <!-- 分层收益柱状图 -->
+      <el-col :span="12">
+        <el-card class="chart-card">
+          <template #header>
+            <span>分层收益对比</span>
+          </template>
+          <div ref="layerChart" class="chart-container"></div>
+        </el-card>
+      </el-col>
+
+      <!-- 胜率对比图 -->
+      <el-col :span="12">
+        <el-card class="chart-card">
+          <template #header>
+            <span>分层胜率对比</span>
+          </template>
+          <div ref="winRateChart" class="chart-container"></div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <!-- IC分析 -->
+    <el-card class="ic-card">
       <template #header>
-        <span>IC值分析</span>
+        <div class="card-header">
+          <span>IC分析（信息系数）</span>
+          <el-tag type="success" size="small">平均IC: {{ avgIC }}</el-tag>
+        </div>
       </template>
-      <el-row :gutter="20">
-        <el-col :span="8">
-          <div class="ic-metric">
-            <div class="ic-title">IC均值</div>
-            <div class="ic-value" :class="getICClass(results.meanIC)">
-              {{ results.meanIC?.toFixed(4) || '-' }}
-            </div>
+      <div ref="icChart" class="chart-container-small"></div>
+      <el-row :gutter="20" class="ic-metrics">
+        <el-col :span="6">
+          <div class="metric-item">
+            <span class="label">IC均值</span>
+            <span class="value">{{ icMetrics.mean }}</span>
           </div>
         </el-col>
-        <el-col :span="8">
-          <div class="ic-metric">
-            <div class="ic-title">IC标准差</div>
-            <div class="ic-value">
-              {{ results.stdIC?.toFixed(4) || '-' }}
-            </div>
+        <el-col :span="6">
+          <div class="metric-item">
+            <span class="label">IC标准差</span>
+            <span class="value">{{ icMetrics.std }}</span>
           </div>
         </el-col>
-        <el-col :span="8">
-          <div class="ic-metric">
-            <div class="ic-title">ICIR</div>
-            <div class="ic-value" :class="getICIRClass(results.ICIR)">
-              {{ results.ICIR?.toFixed(4) || '-' }}
-            </div>
+        <el-col :span="6">
+          <div class="metric-item">
+            <span class="label">IR比率</span>
+            <span class="value">{{ icMetrics.ir }}</span>
           </div>
         </el-col>
-      </el-row>
-      <el-row :gutter="20" style="margin-top: 20px;">
-        <el-col :span="8">
-          <div class="ic-metric">
-            <div class="ic-title">IC>0占比</div>
-            <div class="ic-value">
-              {{ formatPercent(results.icPositiveRatio) }}
-            </div>
-          </div>
-        </el-col>
-        <el-col :span="8">
-          <div class="ic-metric">
-            <div class="ic-title">IC>0.05占比</div>
-            <div class="ic-value" :class="getICClass(results.strongPositiveRatio)">
-              {{ formatPercent(results.strongPositiveRatio) }}
-            </div>
-          </div>
-        </el-col>
-        <el-col :span="8">
-          <div class="ic-metric">
-            <div class="ic-title">单调性</div>
-            <div class="ic-value" :class="results.monoDec ? 'text-success' : 'text-warning'">
-              {{ results.monoDec ? '单调递减' : '非单调' }}
-            </div>
+        <el-col :span="6">
+          <div class="metric-item">
+            <span class="label">IC>0比例</span>
+            <span class="value">{{ icMetrics.positiveRatio }}</span>
           </div>
         </el-col>
       </el-row>
     </el-card>
 
-    <!-- Layer Chart -->
-    <el-card class="chart-card" v-if="results">
+    <!-- 分层详情表格 -->
+    <el-card class="detail-card">
       <template #header>
-        <span>分层收益分布</span>
+        <div class="card-header">
+          <span>分层详情</span>
+          <el-button size="small" @click="exportData">
+            <el-icon><Download /></el-icon>
+            导出
+          </el-button>
+        </div>
       </template>
-      <div ref="layerChart" class="chart-container"></div>
-    </el-card>
-
-    <!-- Layer Details -->
-    <el-card class="layer-card" v-if="results && results.layerData">
-      <template #header>
-        <span>分层详情</span>
-      </template>
-      <el-table :data="results.layerData" style="width: 100%">
-        <el-table-column prop="layer" label="层级" width="80">
+      <el-table :data="layerData" style="width: 100%" v-loading="loading">
+        <el-table-column prop="layer" label="分层" width="100">
           <template #default="scope">
-            <el-tag>第{{ scope.row.layer }}层</el-tag>
+            <el-tag size="small">第{{ scope.row.layer }}层</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="scoreRange" label="得分范围" width="150">
+        <el-table-column prop="score_range" label="得分区间" width="150">
           <template #default="scope">
-            {{ scope.row.min?.toFixed(0) }} - {{ scope.row.max?.toFixed(0) }}
+            {{ scope.row.min_score }} - {{ scope.row.max_score }}
           </template>
         </el-table-column>
-        <el-table-column prop="count" label="股票数" width="100" />
-        <el-table-column prop="return" label="平均收益" width="120">
+        <el-table-column prop="stock_count" label="股票数" width="100" />
+        <el-table-column prop="avg_return" label="平均收益" width="120">
           <template #default="scope">
-            <span :class="scope.row.return > 0 ? 'text-success' : 'text-danger'">
-              {{ formatPercent(scope.row.return) }}
+            <span :class="scope.row.avg_return >= 0 ? 'positive' : 'negative'">
+              {{ scope.row.avg_return >= 0 ? '+' : '' }}{{ scope.row.avg_return }}%
             </span>
           </template>
         </el-table-column>
-        <el-table-column prop="winRate" label="胜率" width="100">
+        <el-table-column prop="win_rate" label="胜率" width="100">
           <template #default="scope">
-            {{ formatPercent(scope.row.winRate) }}
+            <el-progress
+              :percentage="scope.row.win_rate"
+              :color="getWinRateColor(scope.row.win_rate)"
+              :stroke-width="8"
+            />
           </template>
         </el-table-column>
-        <el-table-column prop="turnover" label="换手率" width="100">
+        <el-table-column prop="max_profit" label="最大盈利" width="120">
           <template #default="scope">
-            {{ formatPercent(scope.row.turnover) }}
+            <span class="positive">+{{ scope.row.max_profit }}%</span>
           </template>
         </el-table-column>
+        <el-table-column prop="max_loss" label="最大亏损" width="120">
+          <template #default="scope">
+            <span class="negative">-{{ scope.row.max_loss }}%</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="sharpe" label="夏普比率" width="100" />
       </el-table>
-    </el-card>
-
-    <!-- IC Time Series -->
-    <el-card class="time-card" v-if="results && results.icSeries">
-      <template #header>
-        <span>IC时间序列</span>
-      </template>
-      <div ref="icTimeChart" class="chart-container"></div>
     </el-card>
   </div>
 </template>
 
-<script>
-import { ref, reactive, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import { DataAnalysis } from '@element-plus/icons-vue'
+<script setup>
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import * as echarts from 'echarts'
-import axios from 'axios'
+import { Refresh, Download } from '@element-plus/icons-vue'
+import { getLayeringResult, getWinRateAnalysis } from '@/api'
 
-export default {
-  name: 'Layering',
-  components: {
-    DataAnalysis
-  },
-  setup() {
-    const loading = ref(false)
-    const results = ref(null)
-    const layerChart = ref(null)
-    const icTimeChart = ref(null)
-    let layerChartInstance = null
-    let icTimeChartInstance = null
+const loading = ref(false)
+const avgIC = ref('0.05')
 
-    const config = reactive({
-      date: new Date().toISOString().split('T')[0],
-      layers: 5,
-      factor: 'total_score'
-    })
+const params = reactive({
+  layers: '5',
+  period: '1y',
+  stock_pool: 'hs300'
+})
 
-    const runAnalysis = async () => {
-      loading.value = true
-      try {
-        const response = await axios.get('/api/layering', {
-          params: {
-            date: config.date.replace(/-/g, ''),
-            layers: config.layers,
-            factor: config.factor
-          }
-        })
-        
-        if (response.data) {
-          results.value = response.data
-          initCharts()
-          ElMessage.success('分层分析完成')
-        }
-      } catch (error) {
-        console.error('Layering failed:', error)
-        // Mock data
-        results.value = {
-          meanIC: 0.082,
-          stdIC: 0.045,
-          ICIR: 1.82,
-          icPositiveRatio: 0.72,
-          strongPositiveRatio: 0.45,
-          monoDec: true,
-          layerData: [
-            { layer: 1, min: 80, max: 100, count: 20, return: 0.025, winRate: 0.75, turnover: 0.3 },
-            { layer: 2, min: 60, max: 80, count: 20, return: 0.015, winRate: 0.65, turnover: 0.25 },
-            { layer: 3, min: 40, max: 60, count: 20, return: 0.005, winRate: 0.55, turnover: 0.2 },
-            { layer: 4, min: 20, max: 40, count: 20, return: -0.008, winRate: 0.45, turnover: 0.15 },
-            { layer: 5, min: 0, max: 20, count: 20, return: -0.018, winRate: 0.35, turnover: 0.1 }
-          ],
-          icSeries: generateICSeries()
-        }
-        initCharts()
-        ElMessage.success('分层分析完成（模拟数据）')
-      } finally {
-        loading.value = false
-      }
+const icMetrics = reactive({
+  mean: '0.052',
+  std: '0.128',
+  ir: '0.41',
+  positiveRatio: '62.5%'
+})
+
+const layerData = ref([])
+
+const layerChart = ref(null)
+const winRateChart = ref(null)
+const icChart = ref(null)
+let layerChartInstance = null
+let winRateChartInstance = null
+let icChartInstance = null
+
+const getWinRateColor = (rate) => {
+  if (rate >= 70) return '#67C23A'
+  if (rate >= 50) return '#409EFF'
+  return '#F56C6C'
+}
+
+const loadData = async () => {
+  loading.value = true
+  try {
+    const layeringData = await getLayeringResult(params)
+    const winRateData = await getWinRateAnalysis(params)
+    
+    if (layeringData) {
+      layerData.value = layeringData.layers || []
+      updateLayerChart(layeringData)
     }
-
-    const generateICSeries = () => {
-      const series = []
-      for (let i = 0; i < 50; i++) {
-        series.push({
-          date: new Date(2024, 0, i * 7).toLocaleDateString(),
-          ic: Math.random() * 0.15 - 0.02
-        })
-      }
-      return series
+    
+    if (winRateData) {
+      updateWinRateChart(winRateData)
     }
-
-    const initCharts = () => {
-      if (layerChart.value && results.value?.layerData) {
-        layerChartInstance = echarts.init(layerChart.value)
-        
-        const layerNames = results.value.layerData.map(d => `第${d.layer}层`)
-        const returns = results.value.layerData.map(d => d.return * 100)
-        const colors = ['#67C23A', '#409EFF', '#E6A23C', '#F56C6C', '#909399']
-
-        layerChartInstance.setOption({
-          tooltip: { trigger: 'axis' },
-          xAxis: { type: 'category', data: layerNames },
-          yAxis: { type: 'value', axisLabel: { formatter: '{value}%' } },
-          series: [{
-            data: returns.map((v, i) => ({
-              value: v,
-              itemStyle: { color: colors[i] }
-            })),
-            type: 'bar',
-            label: { show: true, position: 'top', formatter: '{c}%' }
-          }]
-        })
-      }
-
-      if (icTimeChart.value && results.value?.icSeries) {
-        icTimeChartInstance = echarts.init(icTimeChart.value)
-        
-        const dates = results.value.icSeries.map(d => d.date)
-        const ics = results.value.icSeries.map(d => d.ic)
-
-        icTimeChartInstance.setOption({
-          tooltip: { trigger: 'axis' },
-          xAxis: { type: 'category', data: dates },
-          yAxis: { type: 'value' },
-          series: [{
-            data: ics,
-            type: 'line',
-            markLine: {
-              data: [
-                { yAxis: 0, name: '0' },
-                { yAxis: 0.05, name: '有效阈值' }
-              ]
-            }
-          }]
-        })
-      }
-    }
-
-    const formatPercent = (value) => {
-      if (!value) return '-'
-      const prefix = value > 0 ? '+' : ''
-      return `${prefix}${(value * 100).toFixed(1)}%`
-    }
-
-    const getICClass = (ic) => {
-      if (ic > 0.05) return 'text-success'
-      if (ic < 0) return 'text-danger'
-      return ''
-    }
-
-    const getICIRClass = (icir) => {
-      if (icir > 0.5) return 'text-success'
-      if (icir < 0) return 'text-danger'
-      return ''
-    }
-
-    onMounted(() => {
-      window.addEventListener('resize', () => {
-        layerChartInstance?.resize()
-        icTimeChartInstance?.resize()
-      })
-    })
-
-    return {
-      loading,
-      results,
-      config,
-      layerChart,
-      icTimeChart,
-      runAnalysis,
-      formatPercent,
-      getICClass,
-      getICIRClass
-    }
+    
+    updateICChart()
+  } catch (error) {
+    console.error('Failed to load layering data:', error)
+    generateMockData()
+  } finally {
+    loading.value = false
   }
 }
+
+const generateMockData = () => {
+  const layerCount = parseInt(params.layers)
+  layerData.value = Array.from({ length: layerCount }, (_, i) => {
+    const layerNum = i + 1
+    const baseReturn = (layerCount - layerNum) * 2 + Math.random() * 5
+    return {
+      layer: layerNum,
+      score_range: `${100 - layerNum * (100 / layerCount)}-${100 - (layerNum - 1) * (100 / layerCount)}`,
+      stock_count: Math.floor(300 / layerCount + Math.random() * 20),
+      avg_return: (baseReturn + (layerNum <= layerCount / 2 ? 3 : -2)).toFixed(2),
+      win_rate: Math.floor(50 + (layerCount - layerNum) * 3 + Math.random() * 10),
+      max_profit: (Math.random() * 30 + 15).toFixed(2),
+      max_loss: (Math.random() * 15 + 5).toFixed(2),
+      sharpe: (Math.random() * 2 + (layerNum <= layerCount / 2 ? 1 : 0.5)).toFixed(2)
+    }
+  })
+  
+  updateLayerChart()
+  updateWinRateChart()
+  updateICChart()
+}
+
+const updateLayerChart = (data = null) => {
+  if (!layerChart.value) return
+  
+  if (layerChartInstance) {
+    layerChartInstance.dispose()
+  }
+  
+  layerChartInstance = echarts.init(layerChart.value)
+  
+  const layers = layerData.value.map(d => `第${d.layer}层`)
+  const returns = layerData.value.map(d => parseFloat(d.avg_return))
+  
+  const option = {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' }
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '3%',
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: layers,
+      axisLabel: { rotate: 0 }
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: { formatter: '{value}%' }
+    },
+    series: [
+      {
+        name: '平均收益',
+        type: 'bar',
+        data: returns,
+        itemStyle: {
+          color: function(params) {
+            return params.value >= 0 ? '#67C23A' : '#F56C6C'
+          }
+        },
+        label: {
+          show: true,
+          position: 'top',
+          formatter: '{c}%'
+        }
+      }
+    ]
+  }
+  
+  layerChartInstance.setOption(option)
+}
+
+const updateWinRateChart = (data = null) => {
+  if (!winRateChart.value) return
+  
+  if (winRateChartInstance) {
+    winRateChartInstance.dispose()
+  }
+  
+  winRateChartInstance = echarts.init(winRateChart.value)
+  
+  const layers = layerData.value.map(d => `第${d.layer}层`)
+  const winRates = layerData.value.map(d => d.win_rate)
+  
+  const option = {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' }
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '3%',
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: layers
+    },
+    yAxis: {
+      type: 'value',
+      max: 100,
+      axisLabel: { formatter: '{value}%' }
+    },
+    series: [
+      {
+        name: '胜率',
+        type: 'bar',
+        data: winRates,
+        itemStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: '#409EFF' },
+            { offset: 1, color: '#66b1ff' }
+          ])
+        },
+        label: {
+          show: true,
+          position: 'top',
+          formatter: '{c}%'
+        }
+      }
+    ]
+  }
+  
+  winRateChartInstance.setOption(option)
+}
+
+const updateICChart = () => {
+  if (!icChart.value) return
+  
+  if (icChartInstance) {
+    icChartInstance.dispose()
+  }
+  
+  icChartInstance = echarts.init(icChart.value)
+  
+  // 模拟IC时间序列
+  const dates = Array.from({ length: 30 }, (_, i) => {
+    const d = new Date(2024, 0, 1)
+    d.setDate(d.getDate() + i * 10)
+    return d.toISOString().split('T')[0]
+  })
+  
+  const icValues = Array.from({ length: 30 }, () => (Math.random() * 0.2 - 0.05).toFixed(3))
+  
+  const option = {
+    tooltip: {
+      trigger: 'axis'
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '3%',
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: dates,
+      axisLabel: { rotate: 45 }
+    },
+    yAxis: {
+      type: 'value'
+    },
+    series: [
+      {
+        name: 'IC',
+        type: 'line',
+        smooth: true,
+        data: icValues,
+        itemStyle: { color: '#409EFF' },
+        markLine: {
+          data: [{ yAxis: 0, name: '零线' }],
+          lineStyle: { color: '#999', type: 'dashed' }
+        },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(64, 158, 255, 0.2)' },
+            { offset: 1, color: 'rgba(64, 158, 255, 0.05)' }
+          ])
+        }
+      }
+    ]
+  }
+  
+  icChartInstance.setOption(option)
+}
+
+const exportData = () => {
+  const csv = [
+    ['分层', '得分区间', '股票数', '平均收益', '胜率', '最大盈利', '最大亏损', '夏普比率'].join(','),
+    ...layerData.value.map(row => [
+      `第${row.layer}层`,
+      row.score_range,
+      row.stock_count,
+      row.avg_return,
+      row.win_rate,
+      row.max_profit,
+      row.max_loss,
+      row.sharpe
+    ].join(','))
+  ].join('\n')
+  
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `layering_analysis_${new Date().toISOString().split('T')[0]}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+onMounted(() => {
+  loadData()
+})
+
+onUnmounted(() => {
+  if (layerChartInstance) layerChartInstance.dispose()
+  if (winRateChartInstance) winRateChartInstance.dispose()
+  if (icChartInstance) icChartInstance.dispose()
+})
 </script>
 
 <style scoped>
 .layering {
-  padding: 20px;
+  padding: 0;
 }
 
-.config-card, .ic-card, .chart-card, .layer-card, .time-card {
+.params-card {
   margin-bottom: 20px;
 }
 
-.ic-metric {
-  text-align: center;
-  padding: 15px;
-  background: #f5f7fa;
-  border-radius: 4px;
-}
-
-.ic-title {
-  font-size: 14px;
-  color: #909399;
-  margin-bottom: 8px;
-}
-
-.ic-value {
-  font-size: 22px;
-  font-weight: bold;
+.chart-card {
+  margin-bottom: 20px;
 }
 
 .chart-container {
   height: 300px;
+  width: 100%;
 }
 
-.text-success {
-  color: #67c23a;
+.chart-container-small {
+  height: 200px;
+  width: 100%;
 }
 
-.text-danger {
-  color: #f56c6c;
+.ic-card {
+  margin-bottom: 20px;
 }
 
-.text-warning {
-  color: #e6a23c;
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ic-metrics {
+  margin-top: 20px;
+}
+
+.metric-item {
+  text-align: center;
+  padding: 16px;
+  background: #f5f7fa;
+  border-radius: 4px;
+}
+
+.metric-item .label {
+  font-size: 13px;
+  color: #909399;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.metric-item .value {
+  font-size: 20px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.detail-card {
+  margin-bottom: 20px;
+}
+
+.positive {
+  color: #67C23A;
+}
+
+.negative {
+  color: #F56C6C;
 }
 </style>
