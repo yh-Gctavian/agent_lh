@@ -200,8 +200,9 @@ class TdxLocalLoader:
                 record_data = data[offset:offset + self.DAY_RECORD_SIZE]
                 
                 # 解析字段
-                # struct格式：I(日期) IIII(开高低收) f(成交额) I(成交量) I(保留)
-                unpacked = struct.unpack('IIIIIIfII', record_data)
+                # struct格式：I(日期) IIII(开高低收) I(成交额) I(成交量) I(保留)
+                # 通达信实际格式32字节，成交额是整数而非浮点数
+                unpacked = struct.unpack('IIIIIIII', record_data)
                 
                 date_int = unpacked[0]
                 open_price = unpacked[1] / 100.0  # 价格需要除以100
